@@ -1,0 +1,9 @@
+.next
+node_modules
+public
+build
+dist
+*.min.js
+*.min.css
+package-lock.json
+yarn.lock 

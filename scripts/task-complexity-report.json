@@ -1,0 +1,59 @@
+{
+  "meta": {
+    "generatedAt": "2025-05-01T12:58:49.700Z",
+    "tasksAnalyzed": 6,
+    "thresholdScore": 5,
+    "projectName": "Your Project Name",
+    "usedResearch": false
+  },
+  "complexityAnalysis": [
+    {
+      "taskId": 5,
+      "taskTitle": "Implement transcription and guide generation with AI",
+      "complexityScore": 8,
+      "recommendedSubtasks": 6,
+      "expansionPrompt": "Break down the AI transcription and guide generation task into detailed subtasks covering: 1) AssemblyAI integration for audio extraction and transcription, 2) OpenAI integration for content transformation, 3) Guide structure generation logic, 4) Image extraction from video timestamps, 5) Database storage implementation, and 6) User feedback systems. Include technical details, potential challenges, and integration points.",
+      "reasoning": "This task involves complex integrations with two AI services (AssemblyAI and OpenAI), media processing (audio extraction and image capture), and creating a sophisticated system to transform raw transcriptions into structured guides. The asynchronous nature of transcription services adds complexity, requiring polling mechanisms and robust error handling."
+    },
+    {
+      "taskId": 6,
+      "taskTitle": "Create basic guide editor and viewer",
+      "complexityScore": 7,
+      "recommendedSubtasks": 5,
+      "expansionPrompt": "Expand the guide editor and viewer implementation into detailed subtasks covering: 1) Data model and state management architecture, 2) Viewer component with navigation controls, 3) Rich text editing capabilities, 4) Step management including reordering, addition and deletion, 5) Version control and persistence mechanisms. Include technical considerations for each component and potential libraries to leverage.",
+      "reasoning": "This task requires implementing complex UI components with rich interactions (drag-and-drop, rich text editing) and maintaining consistent state across multiple operations. The version control system adds significant complexity, as does PDF export functionality. The task combines frontend UI challenges with data persistence considerations."
+    },
+    {
+      "taskId": 7,
+      "taskTitle": "Develop user interface and dashboard",
+      "complexityScore": 6,
+      "recommendedSubtasks": 4,
+      "expansionPrompt": "Detail the user interface and dashboard development into subtasks covering: 1) Component library setup and theming system, 2) Core layout and navigation implementation, 3) Dashboard and guide library features with filtering/sorting, 4) Responsive design implementation and cross-device testing. Include specific UI/UX considerations and component architecture decisions.",
+      "reasoning": "While this task involves multiple UI components, it's primarily focused on frontend implementation using existing UI libraries (Shadcn). The complexity comes from ensuring consistent design, responsive layouts, and implementing search/filtering functionality. The task is substantial but more straightforward than tasks involving complex integrations."
+    },
+    {
+      "taskId": 8,
+      "taskTitle": "Implement subscription system with Stripe",
+      "complexityScore": 7,
+      "recommendedSubtasks": 5,
+      "expansionPrompt": "Break down the Stripe subscription system implementation into detailed subtasks covering: 1) Stripe API integration and subscription plan configuration, 2) Checkout flow and payment processing, 3) Webhook handling for subscription events, 4) Feature access control based on subscription tiers, 5) Subscription management including upgrades/downgrades and billing history. Include security considerations and testing strategies.",
+      "reasoning": "Implementing payment processing requires careful attention to security, error handling, and edge cases. The task involves both frontend (checkout flow, subscription management UI) and backend (Stripe API integration, webhooks, access control) work. The complexity is increased by the need to handle various subscription states and payment scenarios."
+    },
+    {
+      "taskId": 9,
+      "taskTitle": "Create admin dashboard and system management",
+      "complexityScore": 7,
+      "recommendedSubtasks": 5,
+      "expansionPrompt": "Expand the admin dashboard implementation into detailed subtasks covering: 1) Admin authentication and authorization system, 2) User and content management interfaces, 3) System monitoring and analytics dashboards, 4) Configuration management and prompt engineering tools, 5) Maintenance features including error logging, alerting, and backup systems. Include security considerations and access control mechanisms.",
+      "reasoning": "This task involves creating a separate administrative interface with privileged access to system functions. It requires implementing analytics, monitoring tools, and management interfaces for various system aspects. The security implications of admin functionality add complexity, as does implementing features like backup/restore and error alerting."
+    },
+    {
+      "taskId": 10,
+      "taskTitle": "Implement testing, optimization, and deployment",
+      "complexityScore": 8,
+      "recommendedSubtasks": 6,
+      "expansionPrompt": "Detail the testing, optimization, and deployment implementation into subtasks covering: 1) Unit and integration testing framework setup, 2) End-to-end testing implementation, 3) CI/CD pipeline configuration, 4) Performance optimization strategies for frontend and backend, 5) Monitoring and error tracking systems, 6) Production deployment configuration. Include best practices for each area and metrics for measuring success.",
+      "reasoning": "This task spans multiple technical domains including testing methodologies, performance optimization, and DevOps. Setting up comprehensive testing across unit, integration, and E2E tests is complex, as is implementing performance optimizations and monitoring. The CI/CD pipeline and production deployment configuration require significant DevOps expertise and careful planning."
+    }
+  ]
+}

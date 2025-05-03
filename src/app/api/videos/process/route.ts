@@ -17,7 +17,10 @@ export async function POST(request: Request) {
       } = await supabase.auth.getSession()
 
       if (!session?.user) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+        return new NextResponse(JSON.stringify({ error: 'Unauthorized' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' },
+        })
       }
 
       // Parse request body
@@ -26,13 +29,19 @@ export async function POST(request: Request) {
 
       // Validate YouTube URL
       if (!url || !validateYouTubeUrl(url)) {
-        return NextResponse.json({ error: 'Invalid YouTube URL' }, { status: 400 })
+        return new NextResponse(JSON.stringify({ error: 'Invalid YouTube URL' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        })
       }
 
       // Extract video ID
       const videoId = extractYouTubeVideoId(url)
       if (!videoId) {
-        return NextResponse.json({ error: 'Could not extract video ID' }, { status: 400 })
+        return new NextResponse(JSON.stringify({ error: 'Could not extract video ID' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        })
       }
 
       // Initialize queue and metadata extractor
@@ -42,9 +51,12 @@ export async function POST(request: Request) {
       // Check if video is already in queue
       const existingStatus = await queue.getStatus(videoId)
       if (existingStatus) {
-        return NextResponse.json(
-          { error: 'Video is already being processed', status: existingStatus },
-          { status: 409 }
+        return new NextResponse(
+          JSON.stringify({
+            error: 'Video is already being processed',
+            status: existingStatus,
+          }),
+          { status: 409, headers: { 'Content-Type': 'application/json' } }
         )
       }
 
@@ -55,14 +67,20 @@ export async function POST(request: Request) {
       // Add to processing queue
       const queueItem = await queue.addToQueue(session.user.id, url, videoId)
 
-      return NextResponse.json({
-        message: 'Video added to processing queue',
-        status: queueItem,
-        metadata,
-      })
+      return new NextResponse(
+        JSON.stringify({
+          message: 'Video added to processing queue',
+          status: queueItem,
+          metadata,
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      )
     } catch (error) {
       logger.error('Error processing video:', error)
-      return NextResponse.json({ error: 'Failed to process video' }, { status: 500 })
+      return new NextResponse(JSON.stringify({ error: 'Failed to process video' }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      })
     }
   })
 }
@@ -77,7 +95,10 @@ export async function GET(request: Request) {
       } = await supabase.auth.getSession()
 
       if (!session?.user) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+        return new NextResponse(JSON.stringify({ error: 'Unauthorized' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' },
+        })
       }
 
       // Get video ID from query params
@@ -85,7 +106,10 @@ export async function GET(request: Request) {
       const videoId = searchParams.get('videoId')
 
       if (!videoId) {
-        return NextResponse.json({ error: 'Video ID is required' }, { status: 400 })
+        return new NextResponse(JSON.stringify({ error: 'Video ID is required' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        })
       }
 
       // Initialize queue and metadata extractor
@@ -99,16 +123,22 @@ export async function GET(request: Request) {
       ])
 
       if (!status) {
-        return NextResponse.json({ error: 'Video not found in queue' }, { status: 404 })
+        return new NextResponse(JSON.stringify({ error: 'Video not found in queue' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' },
+        })
       }
 
-      return NextResponse.json({
-        status,
-        metadata,
+      return new NextResponse(JSON.stringify({ status, metadata }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
       })
     } catch (error) {
       logger.error('Error getting video status:', error)
-      return NextResponse.json({ error: 'Failed to get video status' }, { status: 500 })
+      return new NextResponse(JSON.stringify({ error: 'Failed to get video status' }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      })
     }
   })
 }
@@ -123,7 +153,10 @@ export async function DELETE(request: Request) {
       } = await supabase.auth.getSession()
 
       if (!session?.user) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+        return new NextResponse(JSON.stringify({ error: 'Unauthorized' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' },
+        })
       }
 
       // Get video ID from query params
@@ -131,7 +164,10 @@ export async function DELETE(request: Request) {
       const videoId = searchParams.get('videoId')
 
       if (!videoId) {
-        return NextResponse.json({ error: 'Video ID is required' }, { status: 400 })
+        return new NextResponse(JSON.stringify({ error: 'Video ID is required' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        })
       }
 
       // Initialize queue and metadata extractor
@@ -141,23 +177,33 @@ export async function DELETE(request: Request) {
       // Get current status to verify ownership
       const status = await queue.getStatus(videoId)
       if (!status) {
-        return NextResponse.json({ error: 'Video not found in queue' }, { status: 404 })
+        return new NextResponse(JSON.stringify({ error: 'Video not found in queue' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' },
+        })
       }
 
       // Verify ownership
       if (status.userId !== session.user.id) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
+        return new NextResponse(JSON.stringify({ error: 'Unauthorized' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' },
+        })
       }
 
       // Remove from queue and delete metadata
       await Promise.all([queue.removeFromQueue(videoId), metadataExtractor.deleteMetadata(videoId)])
 
-      return NextResponse.json({
-        message: 'Video removed from queue',
+      return new NextResponse(JSON.stringify({ message: 'Video removed from queue' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
       })
     } catch (error) {
       logger.error('Error removing video:', error)
-      return NextResponse.json({ error: 'Failed to remove video' }, { status: 500 })
+      return new NextResponse(JSON.stringify({ error: 'Failed to remove video' }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      })
     }
   })
 }

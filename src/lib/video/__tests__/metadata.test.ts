@@ -1,6 +1,7 @@
 import { MetadataExtractor, VideoMetadata } from '../metadata'
 import { YtDlp } from '../yt-dlp'
 import { SupabaseClient } from '@supabase/supabase-js'
+import { PostgrestSingleResponse, PostgrestError } from '@supabase/postgrest-js'
 
 // Mock dependencies
 jest.mock('../yt-dlp')
@@ -28,11 +29,11 @@ describe('MetadataExtractor', () => {
         vcodec: 'h264',
       },
     ],
-    uploadDate: '20240321',
+    upload_date: '20240321',
     uploader: 'Test Channel',
-    uploaderUrl: 'https://youtube.com/channel/test',
-    viewCount: 1000,
-    likeCount: 100,
+    uploader_url: 'https://youtube.com/channel/test',
+    view_count: 1000,
+    like_count: 100,
     tags: ['test', 'video'],
   }
 
@@ -59,37 +60,121 @@ describe('MetadataExtractor', () => {
     tags: ['test', 'video'],
   }
 
-  const mockSupabase = {
-    from: jest.fn(() => ({
-      insert: jest.fn(() => ({ error: null })),
-      select: jest.fn(() => ({
-        eq: jest.fn(() => ({
-          single: jest.fn(() => ({ data: mockMetadata, error: null })),
-        })),
-      })),
-      delete: jest.fn(() => ({
-        eq: jest.fn(() => ({ error: null })),
-      })),
-    })),
-  } as unknown as SupabaseClient
+  type VideoMetadataRow = { video_id: string } & Omit<VideoMetadata, 'id'>
 
+  const createPostgrestError = (code: string, message: string): PostgrestError => ({
+    code,
+    message,
+    details: '',
+    hint: '',
+    name: 'PostgrestError'
+  })
+
+  const mockSuccessResponse = <T>(data: T): PostgrestSingleResponse<T> => ({
+    data,
+    error: null,
+    count: null,
+    status: 200,
+    statusText: 'OK',
+  })
+
+  // const mockEmptyResponse = (): PostgrestResponse<null> => ({
+  //   data: null,
+  //   error: createPostgrestError('', ''),
+  //   count: null,
+  //   status: 200,
+  //   statusText: 'OK',
+  // })
+
+  const mockErrorResponse = (error: Partial<PostgrestError>): PostgrestSingleResponse<null> => ({
+    data: null,
+    error: createPostgrestError(error.code || '', error.message || ''),
+    count: null,
+    status: 400,
+    statusText: 'Bad Request',
+  })
+
+  const createMockSupabase = () => {
+    const mockFrom = jest.fn().mockReturnValue({
+      insert: jest.fn().mockImplementation(() => Promise.resolve(mockSuccessResponse(null))),
+      select: jest.fn().mockReturnThis(),
+      delete: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+      single: jest.fn().mockImplementation(() =>
+        Promise.resolve(mockSuccessResponse<VideoMetadataRow>({ video_id: mockVideoId, ...mockMetadata }))
+      ),
+    })
+
+    return {
+      from: mockFrom,
+    } as unknown as SupabaseClient
+  }
+
+  interface DownloadProgress {
+    percentage: number
+    speed: string
+    eta: string
+    size: string
+  }
+
+  const createMockYtDlp = (metadata: Promise<unknown>) => {
+    const mockInstance = {
+      getVideoMetadata: jest.fn().mockImplementation(() => metadata),
+      downloadVideo: jest.fn().mockImplementation((url: string, onProgress?: (progress: DownloadProgress) => void) => {
+        if (onProgress) {
+          onProgress({
+            percentage: 100,
+            speed: '1MB/s',
+            eta: '0s',
+            size: '10MB'
+          })
+        }
+        return Promise.resolve('/path/to/video')
+      }),
+    }
+
+    // Add private parseProgress method
+    Object.defineProperty(mockInstance, 'parseProgress', {
+      value: jest.fn().mockImplementation((_output: string): DownloadProgress | null => {
+        return {
+          percentage: 100,
+          speed: '1MB/s',
+          eta: '0s',
+          size: '10MB'
+        }
+      }),
+      enumerable: false,
+      configurable: true,
+      writable: true
+    })
+
+    return mockInstance as unknown as YtDlp
+  }
+
+  let mockSupabase: SupabaseClient
   let extractor: MetadataExtractor
+  let mockYtDlpInstance: ReturnType<typeof createMockYtDlp>
 
   beforeEach(() => {
     jest.clearAllMocks()
+    mockYtDlpInstance = createMockYtDlp(Promise.resolve(mockYtDlpMetadata))
+    jest.mocked(YtDlp).mockImplementation(() => mockYtDlpInstance)
+    mockSupabase = createMockSupabase()
     extractor = new MetadataExtractor(mockSupabase)
-    ;(YtDlp.getVideoMetadata as jest.Mock).mockResolvedValue(mockYtDlpMetadata)
   })
 
   describe('extractMetadata', () => {
     it('should extract metadata from YouTube URL', async () => {
       const result = await extractor.extractMetadata(mockUrl)
       expect(result).toEqual(mockMetadata)
-      expect(YtDlp.getVideoMetadata).toHaveBeenCalledWith(mockUrl)
+      expect(mockYtDlpInstance.getVideoMetadata).toHaveBeenCalledWith(mockUrl)
     })
 
     it('should handle extraction errors', async () => {
-      ;(YtDlp.getVideoMetadata as jest.Mock).mockRejectedValue(new Error('Extraction failed'))
+      const error = new Error('Extraction failed')
+      const mockYtDlp = createMockYtDlp(Promise.reject(error))
+      jest.mocked(YtDlp).mockImplementation(() => mockYtDlp)
+      extractor = new MetadataExtractor(mockSupabase)
 
       await expect(extractor.extractMetadata(mockUrl)).rejects.toThrow(
         'Failed to extract video metadata'
@@ -99,9 +184,14 @@ describe('MetadataExtractor', () => {
 
   describe('saveMetadata', () => {
     it('should save metadata to database', async () => {
+      const mockFrom = jest.fn().mockReturnValue({
+        insert: jest.fn().mockImplementation(() => Promise.resolve(mockSuccessResponse(null))),
+      })
+      mockSupabase.from = mockFrom
+
       await extractor.saveMetadata(mockVideoId, mockMetadata)
       expect(mockSupabase.from).toHaveBeenCalledWith('video_metadata')
-      expect(mockSupabase.from().insert).toHaveBeenCalledWith(
+      expect(mockSupabase.from('video_metadata').insert).toHaveBeenCalledWith(
         expect.objectContaining({
           video_id: mockVideoId,
           title: mockMetadata.title,
@@ -111,9 +201,12 @@ describe('MetadataExtractor', () => {
     })
 
     it('should handle database errors', async () => {
-      mockSupabase.from().insert.mockImplementationOnce(() => ({
-        error: new Error('Database error'),
-      }))
+      const mockFrom = jest.fn().mockReturnValue({
+        insert: jest.fn().mockImplementation(() =>
+          Promise.resolve(mockErrorResponse({ code: 'PGRST409', message: 'Database error' }))
+        ),
+      })
+      mockSupabase.from = mockFrom
 
       await expect(extractor.saveMetadata(mockVideoId, mockMetadata)).rejects.toThrow(
         'Failed to save video metadata'
@@ -125,18 +218,20 @@ describe('MetadataExtractor', () => {
     it('should get metadata from database', async () => {
       const result = await extractor.getMetadata(mockVideoId)
       expect(result).toEqual(mockMetadata)
-      expect(mockSupabase.from().select().eq).toHaveBeenCalledWith('video_id', mockVideoId)
+      expect(mockSupabase.from).toHaveBeenCalledWith('video_metadata')
+      expect(mockSupabase.from('video_metadata').select).toHaveBeenCalled()
+      expect(mockSupabase.from('video_metadata').select().eq).toHaveBeenCalledWith('video_id', mockVideoId)
     })
 
     it('should return null for non-existent video', async () => {
-      mockSupabase
-        .from()
-        .select()
-        .eq()
-        .single.mockImplementationOnce(() => ({
-          data: null,
-          error: { code: 'PGRST116' },
-        }))
+      const mockFrom = jest.fn().mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        eq: jest.fn().mockReturnThis(),
+        single: jest.fn().mockImplementation(() =>
+          Promise.resolve(mockErrorResponse({ code: 'PGRST116', message: 'Record not found' }))
+        ),
+      })
+      mockSupabase.from = mockFrom
 
       const result = await extractor.getMetadata(mockVideoId)
       expect(result).toBeNull()
@@ -145,17 +240,26 @@ describe('MetadataExtractor', () => {
 
   describe('deleteMetadata', () => {
     it('should delete metadata from database', async () => {
+      const mockFrom = jest.fn().mockReturnValue({
+        delete: jest.fn().mockReturnThis(),
+        eq: jest.fn().mockImplementation(() => Promise.resolve(mockSuccessResponse(null))),
+      })
+      mockSupabase.from = mockFrom
+
       await extractor.deleteMetadata(mockVideoId)
-      expect(mockSupabase.from().delete().eq).toHaveBeenCalledWith('video_id', mockVideoId)
+      expect(mockSupabase.from).toHaveBeenCalledWith('video_metadata')
+      expect(mockSupabase.from('video_metadata').delete).toHaveBeenCalled()
+      expect(mockSupabase.from('video_metadata').delete().eq).toHaveBeenCalledWith('video_id', mockVideoId)
     })
 
     it('should handle deletion errors', async () => {
-      mockSupabase
-        .from()
-        .delete()
-        .eq.mockImplementationOnce(() => ({
-          error: new Error('Database error'),
-        }))
+      const mockFrom = jest.fn().mockReturnValue({
+        delete: jest.fn().mockReturnThis(),
+        eq: jest.fn().mockImplementation(() =>
+          Promise.resolve(mockErrorResponse({ code: 'PGRST409', message: 'Database error' }))
+        ),
+      })
+      mockSupabase.from = mockFrom
 
       await expect(extractor.deleteMetadata(mockVideoId)).rejects.toThrow(
         'Failed to delete video metadata'

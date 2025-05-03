@@ -1,3 +1,4 @@
+console.log('route.ts loaded')
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
@@ -9,15 +10,21 @@ import { logger } from '@/config/logger'
 import { apiConfig } from '@/config/api'
 
 export async function POST(request: Request) {
+  // throw new Error('FORCED ERROR: POST handler reached');
   return protectApi(async () => {
     try {
+      console.log('POST handler: start')
       const cookieStore = cookies()
+      console.log('POST handler: got cookieStore')
       const supabase = createServerClient(cookieStore)
+      console.log('POST handler: got supabase')
       const {
         data: { session },
       } = await supabase.auth.getSession()
+      console.log('POST handler: got session', session)
 
       if (!session?.user) {
+        console.log('POST handler: no user in session')
         return NextResponse.json(
           { error: 'Unauthorized' },
           { status: 401 }
@@ -26,9 +33,11 @@ export async function POST(request: Request) {
 
       // Parse request body
       const body = await request.json()
+      console.log('POST handler: got body', body)
       const { videoId } = body
 
       if (!videoId) {
+        console.log('POST handler: missing videoId')
         return NextResponse.json(
           { error: 'Video ID is required' },
           { status: 400 }
@@ -36,16 +45,21 @@ export async function POST(request: Request) {
       }
 
       // Extract audio from video
-      const audioPath = await extractAudio(videoId)
+      const outputPath = `/tmp/${videoId}.mp3`
+      await extractAudio(videoId, outputPath)
+      console.log('POST handler: extracted audio')
 
       // Upload audio to temporary storage for AssemblyAI
-      const audioUrl = await VideoStorage.uploadAudio(videoId, audioPath)
+      const audioUrl = await VideoStorage.uploadAudio(videoId, outputPath)
+      console.log('POST handler: uploaded audio', audioUrl)
 
       // Initialize AssemblyAI client
       if (!apiConfig.assemblyAI.apiKey) {
+        console.log('POST handler: missing AssemblyAI apiKey')
         throw new Error('AssemblyAI API key is not configured')
       }
       const assemblyAI = new AssemblyAI(apiConfig.assemblyAI.apiKey)
+      console.log('POST handler: created AssemblyAI client')
 
       // Submit transcription
       const transcriptionId = await assemblyAI.submitTranscription(audioUrl, {
@@ -54,6 +68,7 @@ export async function POST(request: Request) {
         format_text: true,
         speaker_labels: true,
       })
+      console.log('POST handler: submitted transcription', transcriptionId)
 
       // Store transcription ID in database
       const { error: dbError } = await supabase
@@ -64,18 +79,22 @@ export async function POST(request: Request) {
           status: 'processing',
           user_id: session.user.id,
         })
+      console.log('POST handler: inserted transcription row', dbError)
 
       if (dbError) throw dbError
 
       // Clean up temporary audio file
       await VideoStorage.deleteAudio(videoId)
+      console.log('POST handler: deleted audio')
 
       return NextResponse.json({
         message: 'Transcription started',
         transcriptionId,
       })
     } catch (error) {
+      console.log('POST handler error:', error)
       logger.error('Error transcribing video:', error)
+      throw error
       return NextResponse.json(
         { error: 'Failed to transcribe video' },
         { status: 500 }

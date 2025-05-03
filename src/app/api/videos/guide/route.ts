@@ -15,6 +15,7 @@ export async function POST(request: Request) {
       const {
         data: { session },
       } = await supabase.auth.getSession()
+      console.log('POST handler: got session', session)
 
       if (!session?.user) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -22,6 +23,7 @@ export async function POST(request: Request) {
 
       // Parse request body
       const body = await request.json()
+      console.log('POST handler: got body', body)
       const { videoId, config } = body
 
       if (!videoId) {
@@ -34,12 +36,17 @@ export async function POST(request: Request) {
         .select('*')
         .eq('video_id', videoId)
         .single()
+      console.log('POST handler: got transcription', transcription, transcriptionError)
 
       if (transcriptionError) {
         if (transcriptionError.code === 'PGRST116') {
           return NextResponse.json({ error: 'Transcription not found' }, { status: 404 })
         }
         throw transcriptionError
+      }
+
+      if (!transcription) {
+        throw new Error('Transcription is null')
       }
 
       if (transcription.status !== 'completed') {
@@ -49,12 +56,13 @@ export async function POST(request: Request) {
       // Create guide storage entry
       const guideStorage = new GuideStorage(supabase)
       const { id: guideId } = await guideStorage.createGuide(videoId, session.user.id)
+      console.log('POST handler: created guideId', guideId)
 
       // Generate guide
-      if (!apiConfig.openai.apiKey) {
+      if (!apiConfig.openAI.apiKey) {
         throw new Error('OpenAI API key is not configured')
       }
-      const guideGenerator = new GuideGenerator(apiConfig.openai.apiKey)
+      const guideGenerator = new GuideGenerator(apiConfig.openAI.apiKey)
 
       try {
         const guide = await guideGenerator.generateGuide(
@@ -62,10 +70,13 @@ export async function POST(request: Request) {
           transcription.words,
           config
         )
+        console.log('POST handler: generated guide', guide)
 
         // Store guide
         await guideStorage.updateGuide(guideId, guide)
+        console.log('POST handler: updated guide')
 
+        console.log('POST handler: success')
         return NextResponse.json({
           message: 'Guide generated successfully',
           guideId,
@@ -75,6 +86,7 @@ export async function POST(request: Request) {
           guideId,
           error instanceof Error ? error.message : 'Unknown error'
         )
+        console.log('POST handler: error in guide generation', error)
         throw error
       }
     } catch (error) {
@@ -113,13 +125,15 @@ export async function GET(request: Request) {
         const metadata = await guideStorage.getGuideMetadata(guideId)
         const content = await guideStorage.getGuideContent(guideId)
 
+        console.log('GET handler returning:', { ...metadata, sections: content?.sections })
         return NextResponse.json({
           ...metadata,
           sections: content.sections,
         })
       } else {
         // List guides for video
-        const guides = await guideStorage.listGuides(session.user.id, videoId)
+        const guides = await guideStorage.listGuides(session.user.id, videoId ?? undefined)
+        console.log('GET handler returning:', guides)
         return NextResponse.json(guides)
       }
     } catch (error) {

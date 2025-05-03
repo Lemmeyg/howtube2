@@ -1,13 +1,7 @@
 import OpenAI from 'openai'
 import { logger } from '@/config/logger'
 import { apiConfig } from '@/config/api'
-
-export interface GuideConfig {
-  style?: 'concise' | 'detailed' | 'tutorial'
-  targetAudience?: 'beginner' | 'intermediate' | 'advanced'
-  includeTimestamps?: boolean
-  maxLength?: number
-}
+import { GuideConfig } from './types'
 
 export interface GuideSection {
   title: string
@@ -30,19 +24,37 @@ export class GuideGenerator {
   private openai: OpenAI
 
   constructor(apiKey?: string) {
-    if (!apiKey && !apiConfig.openai.apiKey) {
+    if (!apiKey && !apiConfig.openAI.apiKey) {
       throw new Error('OpenAI API key is required')
     }
     this.openai = new OpenAI({
-      apiKey: apiKey || apiConfig.openai.apiKey,
+      apiKey: apiKey || apiConfig.openAI.apiKey,
     })
   }
 
   async generateGuide(
-    transcription: string,
-    words: Array<{ text: string; start: number; end: number }>,
-    config: GuideConfig = {}
+    transcriptionOrConfig: string | GuideConfig,
+    wordsArg?: Array<{ text: string; start: number; end: number }>,
+    configArg?: GuideConfig
   ): Promise<Guide> {
+    let transcription: string
+    let words: Array<{ text: string; start: number; end: number }>
+    let config: GuideConfig
+
+    if (typeof transcriptionOrConfig === 'string') {
+      if (!wordsArg || !configArg) {
+        throw new Error('transcription, words, and config are required when using the three-argument form')
+      }
+      transcription = transcriptionOrConfig
+      words = wordsArg
+      config = configArg
+    } else {
+      // If called with a single GuideConfig argument
+      transcription = transcriptionOrConfig.transcription
+      words = transcriptionOrConfig.words
+      config = transcriptionOrConfig
+    }
+
     try {
       // Prepare system message based on config
       const style = config.style || 'detailed'

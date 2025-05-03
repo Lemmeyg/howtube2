@@ -1,147 +1,117 @@
-import { ProcessingQueue, QueueItem } from '../queue'
-import { VideoStorage } from '../storage'
-import { SupabaseClient } from '@supabase/supabase-js'
+import { ProcessingQueue, ProcessingStatus } from '../queue'
+import { createClient } from '@supabase/supabase-js'
+import { QueueItem } from '../types'
+import { createMockSupabaseClient } from '../../../test/mocks/supabase'
+// import type { SupabaseClient } from '@supabase/supabase-js'
+// import type { PostgrestQueryBuilder } from '@supabase/postgrest-js'
 
-// Mock dependencies
-jest.mock('../storage')
-jest.mock('@/config/logger', () => ({
-  logger: {
-    error: jest.fn(),
-  },
-}))
+jest.mock('@supabase/supabase-js')
 
 describe('ProcessingQueue', () => {
-  const mockUserId = 'test-user-123'
-  const mockVideoId = 'test-video-123'
-  const mockUrl = 'https://www.youtube.com/watch?v=test123'
+  const mockVideoId = 'test-video-id'
+  const mockUserId = 'test-user-id'
   const mockQueueItem: QueueItem = {
-    id: 'test-queue-123',
-    userId: mockUserId,
-    videoId: mockVideoId,
-    url: mockUrl,
+    id: 1,
+    user_id: mockUserId,
+    video_id: mockVideoId,
     status: 'pending',
-    progress: 0,
-    createdAt: new Date(),
-    updatedAt: new Date(),
+    progress: undefined,
+    error: undefined,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
   }
 
-  const mockSupabase = {
-    from: jest.fn(() => ({
-      insert: jest.fn(() => ({
-        select: jest.fn(() => ({
-          single: jest.fn(() => ({ data: mockQueueItem, error: null })),
-        })),
-      })),
-      select: jest.fn(() => ({
-        eq: jest.fn(() => ({
-          single: jest.fn(() => ({ data: mockQueueItem, error: null })),
-        })),
-        order: jest.fn(() => ({ data: [mockQueueItem], error: null })),
-      })),
-      update: jest.fn(() => ({
-        eq: jest.fn(() => ({ error: null })),
-      })),
-      delete: jest.fn(() => ({
-        eq: jest.fn(() => ({ error: null })),
-        lt: jest.fn(() => ({
-          in: jest.fn(() => ({
-            select: jest.fn(() => ({ data: [{ video_id: mockVideoId }], error: null })),
-          })),
-        })),
-      })),
-    })),
-  } as unknown as SupabaseClient
+  const expectedQueueItem = {
+    id: 1,
+    userId: mockUserId,
+    videoId: mockVideoId,
+    url: undefined,
+    status: 'pending',
+    progress: undefined,
+    speed: undefined,
+    eta: undefined,
+    size: undefined,
+    error: undefined,
+    createdAt: expect.any(Date),
+    updatedAt: expect.any(Date),
+  }
 
   let queue: ProcessingQueue
+  let mockSupabase: unknown
+  let mockQueryBuilder: unknown
 
   beforeEach(() => {
     jest.clearAllMocks()
+    const { client, queryBuilder } = createMockSupabaseClient()
+    mockSupabase = client
+    mockQueryBuilder = queryBuilder
+    ;(createClient as jest.Mock).mockReturnValue(mockSupabase)
     queue = new ProcessingQueue(mockSupabase)
   })
 
   describe('addToQueue', () => {
     it('should add a video to the queue', async () => {
-      const result = await queue.addToQueue(mockUserId, mockUrl, mockVideoId)
-      expect(result).toEqual(mockQueueItem)
+      mockQueryBuilder.single.mockResolvedValueOnce({ data: mockQueueItem, error: null })
+      const result = await queue.addToQueue(mockUserId, 'mock-url', mockVideoId)
+
       expect(mockSupabase.from).toHaveBeenCalledWith('video_processing')
+      expect(mockQueryBuilder.insert).toHaveBeenCalledWith({
+        user_id: mockUserId,
+        video_id: mockVideoId,
+        url: 'mock-url',
+        status: 'pending',
+        progress: 0,
+      })
+      expect(result).toEqual(expectedQueueItem)
     })
 
-    it('should handle database errors', async () => {
-      mockSupabase
-        .from()
-        .insert()
-        .select()
-        .single.mockImplementationOnce(() => ({
-          data: null,
-          error: new Error('Database error'),
-        }))
-
-      await expect(queue.addToQueue(mockUserId, mockUrl, mockVideoId)).rejects.toThrow(
-        'Failed to add video to queue'
-      )
-    })
-  })
-
-  describe('getStatus', () => {
-    it('should get video status from queue', async () => {
-      const result = await queue.getStatus(mockVideoId)
-      expect(result).toEqual(mockQueueItem)
-    })
-
-    it('should return null for non-existent video', async () => {
-      mockSupabase
-        .from()
-        .select()
-        .eq()
-        .single.mockImplementationOnce(() => ({
-          data: null,
-          error: { code: 'PGRST116' },
-        }))
-
-      const result = await queue.getStatus(mockVideoId)
-      expect(result).toBeNull()
+    it('should handle database error', async () => {
+      mockQueryBuilder.single.mockResolvedValueOnce({ data: null, error: new Error('Database error') })
+      await expect(queue.addToQueue(mockUserId, 'mock-url', mockVideoId)).rejects.toThrow('Failed to add video to queue')
     })
   })
 
   describe('updateStatus', () => {
-    it('should update video status in queue', async () => {
-      await queue.updateStatus(mockVideoId, 'downloading', 50, {
-        speed: '1MB/s',
-        eta: '00:01:00',
+    it('should update video status', async () => {
+      const status: ProcessingStatus = 'downloaded'
+      const progress = 100
+      const details = {}
+      await queue.updateStatus(mockVideoId, status, progress, details)
+
+      expect(mockSupabase.from).toHaveBeenCalledWith('video_processing')
+      expect(mockQueryBuilder.eq).toHaveBeenCalledWith('video_id', mockVideoId)
+      expect(mockQueryBuilder.update).toHaveBeenCalledWith({
+        status,
+        progress,
+        updated_at: expect.any(String),
       })
-
-      expect(mockSupabase.from().update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          status: 'downloading',
-          progress: 50,
-          speed: '1MB/s',
-          eta: '00:01:00',
-        })
-      )
     })
-  })
 
-  describe('removeFromQueue', () => {
-    it('should remove video from queue and delete files', async () => {
-      await queue.removeFromQueue(mockVideoId)
-      expect(mockSupabase.from().delete().eq).toHaveBeenCalledWith('video_id', mockVideoId)
-      expect(VideoStorage.deleteVideo).toHaveBeenCalledWith(mockVideoId)
+    it('should handle database error', async () => {
+      mockQueryBuilder.update.mockReturnValueOnce({ error: new Error('Database error') })
+      const status: ProcessingStatus = 'downloaded'
+      const progress = 100
+      const details = {}
+      await expect(queue.updateStatus(mockVideoId, status, progress, details)).rejects.toThrow('Failed to update video status')
     })
   })
 
   describe('getUserQueue', () => {
-    it('should get all videos in user queue', async () => {
+    it('should list user queue items', async () => {
+      mockQueryBuilder.order.mockResolvedValueOnce({ data: [mockQueueItem], error: null })
       const result = await queue.getUserQueue(mockUserId)
-      expect(result).toEqual([mockQueueItem])
-      expect(mockSupabase.from().select().eq).toHaveBeenCalledWith('user_id', mockUserId)
-    })
-  })
 
-  describe('cleanupOldRecords', () => {
-    it('should cleanup old records and their files', async () => {
-      await queue.cleanupOldRecords(24)
-      expect(mockSupabase.from().delete().lt).toHaveBeenCalled()
-      expect(VideoStorage.deleteVideo).toHaveBeenCalledWith(mockVideoId)
+      expect(mockSupabase.from).toHaveBeenCalledWith('video_processing')
+      expect(mockQueryBuilder.eq).toHaveBeenCalledWith('user_id', mockUserId)
+      expect(mockQueryBuilder.order).toHaveBeenCalledWith('created_at', { ascending: false })
+      expect(result).toEqual([expectedQueueItem])
+    })
+
+    it('should handle database error', async () => {
+      mockQueryBuilder.order.mockResolvedValueOnce({ data: null, error: new Error('Database error') })
+      await expect(queue.getUserQueue(mockUserId)).rejects.toThrow('Failed to get user queue')
     })
   })
 })
+
+

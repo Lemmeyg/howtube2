@@ -2,7 +2,7 @@ import { spawn } from 'child_process'
 import path from 'path'
 import { logger } from '@/config/logger'
 import { extractYouTubeVideoId } from '../validation/youtube'
-import { VideoStorage } from '@/lib/video/video-storage'
+import { YtDlpMetadata } from './metadata'
 
 interface DownloadProgress {
   percentage: number
@@ -11,206 +11,155 @@ interface DownloadProgress {
   size: string
 }
 
-interface DownloadOptions {
-  format?: string
-  outputPath: string
-  onProgress?: (progress: DownloadProgress) => void
-  timeout?: number
-  maxRetries?: number
-}
-
-interface VideoMetadata {
-  id: string
-  title: string
-  description: string
-  duration: number
-  thumbnail: string
-  formats: Array<{
-    format_id: string
-    ext: string
-    filesize: number
-    acodec: string
-    vcodec: string
-  }>
-}
-
 export class YtDlpError extends Error {
-  constructor(
-    message: string,
-    public code?: string
-  ) {
+  constructor(message: string, public readonly cause?: Error) {
     super(message)
     this.name = 'YtDlpError'
   }
 }
 
 export class YtDlp {
-  private static readonly DEFAULT_FORMAT =
-    'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
-  private static readonly DEFAULT_TIMEOUT = 300000 // 5 minutes
-  private static readonly DEFAULT_MAX_RETRIES = 3
-  private static readonly PROGRESS_REGEX =
-    /\[download\]\s+(\d+\.?\d*)%\s+of\s+~?\s*(\S+)\s+at\s+(\S+)\s+ETA\s+(\S+)/
+  private static readonly DEFAULT_FORMAT = 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
+  private static readonly DOWNLOAD_DIR = path.join(process.cwd(), 'videos')
 
   /**
-   * Downloads a YouTube video using yt-dlp
+   * Downloads a YouTube video
    */
-  static async downloadVideo(url: string, options: DownloadOptions): Promise<string> {
-    const {
-      format = this.DEFAULT_FORMAT,
+  async downloadVideo(
+    url: string,
+    options: {
+      outputPath?: string
+      onProgress?: (progress: DownloadProgress) => void
+      timeout?: number
+    } = {}
+  ): Promise<string> {
+    const videoId = extractYouTubeVideoId(url)
+    if (!videoId) {
+      throw new YtDlpError('Invalid YouTube URL')
+    }
+
+    const outputPath = options.outputPath || path.join(YtDlp.DOWNLOAD_DIR, videoId)
+    const args = [
+      url,
+      '-f',
+      YtDlp.DEFAULT_FORMAT,
+      '-o',
       outputPath,
-      onProgress,
-      timeout = this.DEFAULT_TIMEOUT,
-      maxRetries = this.DEFAULT_MAX_RETRIES,
-    } = options
+      '--no-playlist',
+      '--progress',
+    ]
 
-    const videoId = extractYouTubeVideoId(url)
-    if (!videoId) {
-      throw new YtDlpError('Invalid YouTube URL')
-    }
-
-    const outputTemplate = path.join(outputPath, `${videoId}.%(ext)s`)
-    let currentTry = 0
-
-    while (currentTry < maxRetries) {
-      try {
-        const args = [
-          url,
-          '--format',
-          format,
-          '--output',
-          outputTemplate,
-          '--no-playlist',
-          '--no-warnings',
-        ]
-
-        const process = spawn('yt-dlp', args)
-        let outputFile: string | undefined
-
-        return await new Promise((resolve, reject) => {
-          const timer = setTimeout(() => {
-            process.kill()
-            reject(new YtDlpError('Download timeout', 'TIMEOUT'))
-          }, timeout)
-
-          process.stdout.on('data', data => {
-            const output = data.toString()
-            // Check for output file path in the output
-            const match = output.match(/\[download\] Destination: (.+)/)
-            if (match) {
-              outputFile = match[1]
-            }
-
-            // Parse progress information
-            const progressMatch = output.match(this.PROGRESS_REGEX)
-            if (progressMatch && onProgress) {
-              onProgress({
-                percentage: parseFloat(progressMatch[1]),
-                size: progressMatch[2],
-                speed: progressMatch[3],
-                eta: progressMatch[4],
-              })
-            }
-          })
-
-          process.stderr.on('data', data => {
-            logger.error('yt-dlp error:', data.toString())
-          })
-
-          process.on('close', code => {
-            clearTimeout(timer)
-            if (code === 0 && outputFile) {
-              resolve(outputFile)
-            } else {
-              reject(new YtDlpError(`yt-dlp process exited with code ${code}`, 'PROCESS_ERROR'))
-            }
-          })
-
-          process.on('error', error => {
-            clearTimeout(timer)
-            reject(new YtDlpError(error.message, 'SPAWN_ERROR'))
-          })
-        })
-      } catch (error) {
-        currentTry++
-        if (currentTry === maxRetries) {
-          throw error
-        }
-        logger.warn(`Download attempt ${currentTry} failed, retrying...`)
-        await new Promise(resolve => setTimeout(resolve, 1000 * currentTry))
-      }
-    }
-
-    throw new YtDlpError('Max retries exceeded')
-  }
-
-  /**
-   * Fetches metadata for a YouTube video
-   */
-  static async getVideoMetadata(url: string): Promise<VideoMetadata> {
-    const videoId = extractYouTubeVideoId(url)
-    if (!videoId) {
-      throw new YtDlpError('Invalid YouTube URL')
-    }
-
-    const args = [url, '--dump-json', '--no-playlist', '--no-warnings']
-
-    const process = spawn('yt-dlp', args)
+    const ytDlp = spawn('yt-dlp', args)
 
     return new Promise((resolve, reject) => {
-      let output = ''
+      let stderr = ''
+      let timeoutId: NodeJS.Timeout | undefined
 
-      process.stdout.on('data', data => {
-        output += data.toString()
-      })
+      if (options.timeout) {
+        timeoutId = setTimeout(() => {
+          ytDlp.kill()
+          reject(new YtDlpError('Download timeout'))
+        }, options.timeout)
+      }
 
-      process.stderr.on('data', data => {
-        logger.error('yt-dlp error:', data.toString())
-      })
-
-      process.on('close', code => {
-        if (code === 0) {
-          try {
-            const metadata = JSON.parse(output)
-            resolve({
-              id: metadata.id,
-              title: metadata.title,
-              description: metadata.description,
-              duration: metadata.duration,
-              thumbnail: metadata.thumbnail,
-              formats: metadata.formats,
-            })
-          } catch (err) {
-            logger.error('Failed to parse video metadata:', err)
-            reject(
-              new YtDlpError(
-                'Failed to parse video metadata',
-                err instanceof Error ? err.message : undefined
-              )
-            )
+      ytDlp.stdout.on('data', (data) => {
+        if (options.onProgress) {
+          const progress = this.parseProgress(data.toString())
+          if (progress) {
+            options.onProgress(progress)
           }
-        } else {
-          const errorMsg = `yt-dlp process exited with code ${code}`
-          logger.error(errorMsg)
-          reject(new YtDlpError(errorMsg, 'PROCESS_ERROR'))
         }
       })
 
-      process.on('error', error => {
-        reject(new YtDlpError(error.message, 'SPAWN_ERROR'))
+      ytDlp.stderr.on('data', (data) => {
+        stderr += data.toString()
+      })
+
+      ytDlp.on('close', (code) => {
+        if (timeoutId) {
+          clearTimeout(timeoutId)
+        }
+        if (code === 0) {
+          resolve(outputPath)
+        } else {
+          reject(new YtDlpError(`yt-dlp process exited with code ${code}: ${stderr}`))
+        }
+      })
+
+      ytDlp.on('error', (error) => {
+        if (timeoutId) {
+          clearTimeout(timeoutId)
+        }
+        reject(new YtDlpError('Failed to spawn yt-dlp', error))
       })
     })
   }
 
   /**
-   * Delete a downloaded video
+   * Fetches metadata for a YouTube video
    */
-  static async deleteVideo(videoId: string): Promise<void> {
-    try {
-      await VideoStorage.deleteVideo(videoId)
-    } catch (err) {
-      logger.error('Failed to delete video:', err)
-      throw new YtDlpError('Failed to delete video', err instanceof Error ? err : undefined)
+  async getVideoMetadata(url: string): Promise<YtDlpMetadata> {
+    const videoId = extractYouTubeVideoId(url)
+    if (!videoId) {
+      throw new YtDlpError('Invalid YouTube URL')
     }
+
+    const args = ['--dump-json', '--no-playlist', '--no-warnings', url]
+    const ytDlp = spawn('yt-dlp', args)
+
+    return new Promise((resolve, reject) => {
+      let stdout = ''
+      let stderr = ''
+
+      ytDlp.stdout.on('data', (data) => {
+        stdout += data.toString()
+      })
+
+      ytDlp.stderr.on('data', (data) => {
+        stderr += data.toString()
+      })
+
+      ytDlp.on('close', (code) => {
+        if (code === 0) {
+          try {
+            const metadata = JSON.parse(stdout)
+            resolve(metadata)
+          } catch (error) {
+            logger.error('Failed to parse video metadata:', error)
+            reject(new YtDlpError('Failed to parse video metadata', error as Error))
+          }
+        } else {
+          const errorMsg = `yt-dlp exited with code ${code}: ${stderr}`
+          logger.error(errorMsg)
+          reject(new YtDlpError(errorMsg))
+        }
+      })
+
+      ytDlp.on('error', (error) => {
+        reject(new YtDlpError('Failed to spawn yt-dlp', error))
+      })
+    })
+  }
+
+  /**
+   * Parses progress output from yt-dlp
+   */
+  public parseProgress(output: string): DownloadProgress | null {
+    // Matches: [download] 28.7% of 231.51KiB at 81.40KiB/s ETA 00:02
+    const progressMatch = output.match(
+      /\[download\]\s+(\d+\.\d+)% of ([\d\.]+\w+) at ([\d\.]+\w+\/s) ETA (\d+:\d+)/
+    )
+
+    if (progressMatch) {
+      const [, percentage, size, speed, eta] = progressMatch
+      return {
+        percentage: parseFloat(percentage),
+        size,
+        speed,
+        eta,
+      }
+    }
+
+    return null
   }
 }

@@ -37,6 +37,10 @@ describe('VideoStorage', () => {
       ;(fs.mkdir as jest.Mock).mockRejectedValue(error)
 
       await expect(VideoStorage.initialize()).rejects.toThrow(StorageError)
+      await expect(VideoStorage.initialize()).rejects.toThrow('Failed to initialize video storage')
+      await expect(VideoStorage.initialize()).rejects.toMatchObject({
+        cause: error
+      })
     })
   })
 
@@ -72,6 +76,10 @@ describe('VideoStorage', () => {
       ;(fs.readdir as jest.Mock).mockRejectedValue(error)
 
       await expect(VideoStorage.cleanup()).rejects.toThrow(StorageError)
+      await expect(VideoStorage.cleanup()).rejects.toThrow('Failed to cleanup videos')
+      await expect(VideoStorage.cleanup()).rejects.toMatchObject({
+        cause: error
+      })
     })
   })
 
@@ -94,6 +102,10 @@ describe('VideoStorage', () => {
       ;(fs.unlink as jest.Mock).mockRejectedValue(error)
 
       await expect(VideoStorage.deleteVideo(mockVideoId)).rejects.toThrow(StorageError)
+      await expect(VideoStorage.deleteVideo(mockVideoId)).rejects.toThrow('Failed to delete video')
+      await expect(VideoStorage.deleteVideo(mockVideoId)).rejects.toMatchObject({
+        cause: error
+      })
     })
   })
 
@@ -123,9 +135,14 @@ describe('VideoStorage', () => {
     })
 
     it('should handle stat errors', async () => {
-      ;(fs.stat as jest.Mock).mockRejectedValue(new Error())
+      const error = new Error('Permission denied')
+      ;(fs.stat as jest.Mock).mockRejectedValue(error)
 
       await expect(VideoStorage.getFileSize(mockVideoId)).rejects.toThrow(StorageError)
+      await expect(VideoStorage.getFileSize(mockVideoId)).rejects.toThrow('Failed to get file size')
+      await expect(VideoStorage.getFileSize(mockVideoId)).rejects.toMatchObject({
+        cause: error
+      })
     })
   })
 
@@ -149,9 +166,14 @@ describe('VideoStorage', () => {
     })
 
     it('should handle listing errors', async () => {
-      ;(fs.readdir as jest.Mock).mockRejectedValue(new Error())
+      const error = new Error('Permission denied')
+      ;(fs.readdir as jest.Mock).mockRejectedValue(error)
 
       await expect(VideoStorage.listVideos()).rejects.toThrow(StorageError)
+      await expect(VideoStorage.listVideos()).rejects.toThrow('Failed to list videos')
+      await expect(VideoStorage.listVideos()).rejects.toMatchObject({
+        cause: error
+      })
     })
   })
 })

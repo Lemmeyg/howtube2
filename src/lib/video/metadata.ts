@@ -55,23 +55,37 @@ export interface VideoMetadata {
   duration: number
   thumbnail: string
   formats: VideoFormat[]
-  uploadDate: string
+  upload_date: string
   uploader: string
-  uploaderUrl: string
-  viewCount: number
-  likeCount: number
+  uploader_url: string
+  view_count: number
+  like_count: number
   tags: string[]
 }
 
 export class MetadataExtractor {
-  constructor(private readonly supabase: SupabaseClient) {}
+  private readonly ytDlp: YtDlp
+
+  constructor(private readonly supabase: SupabaseClient) {
+    this.ytDlp = new YtDlp()
+  }
+
+  private mapFormat(format: YtDlpFormat): VideoFormat {
+    return {
+      formatId: format.format_id,
+      ext: format.ext,
+      filesize: format.filesize,
+      acodec: format.acodec,
+      vcodec: format.vcodec,
+    }
+  }
 
   /**
    * Extract metadata from a YouTube video URL
    */
   async extractMetadata(url: string): Promise<VideoMetadata> {
     try {
-      const metadata = await YtDlp.getVideoMetadata(url)
+      const metadata = await this.ytDlp.getVideoMetadata(url)
       return this.mapYtDlpMetadata(metadata)
     } catch (error) {
       logger.error('Failed to extract video metadata:', error)
@@ -91,11 +105,11 @@ export class MetadataExtractor {
         duration: metadata.duration,
         thumbnail: metadata.thumbnail,
         formats: metadata.formats,
-        upload_date: metadata.uploadDate,
+        upload_date: metadata.upload_date,
         uploader: metadata.uploader,
-        uploader_url: metadata.uploaderUrl,
-        view_count: metadata.viewCount,
-        like_count: metadata.likeCount,
+        uploader_url: metadata.uploader_url,
+        view_count: metadata.view_count,
+        like_count: metadata.like_count,
         tags: metadata.tags,
       })
 
@@ -146,26 +160,20 @@ export class MetadataExtractor {
   /**
    * Map yt-dlp metadata to our format
    */
-  private mapYtDlpMetadata(ytDlpData: YtDlpMetadata): VideoMetadata {
+  private mapYtDlpMetadata(metadata: YtDlpMetadata): VideoMetadata {
     return {
-      id: ytDlpData.id,
-      title: ytDlpData.title,
-      description: ytDlpData.description,
-      duration: ytDlpData.duration,
-      thumbnail: ytDlpData.thumbnail,
-      formats: ytDlpData.formats.map((format: YtDlpFormat) => ({
-        formatId: format.format_id,
-        ext: format.ext,
-        filesize: format.filesize,
-        acodec: format.acodec,
-        vcodec: format.vcodec,
-      })),
-      uploadDate: ytDlpData.upload_date,
-      uploader: ytDlpData.uploader,
-      uploaderUrl: ytDlpData.uploader_url,
-      viewCount: ytDlpData.view_count,
-      likeCount: ytDlpData.like_count,
-      tags: ytDlpData.tags || [],
+      id: metadata.id,
+      title: metadata.title,
+      description: metadata.description,
+      duration: metadata.duration,
+      thumbnail: metadata.thumbnail,
+      formats: metadata.formats.map((format) => this.mapFormat(format)),
+      upload_date: metadata.upload_date,
+      uploader: metadata.uploader,
+      uploader_url: metadata.uploader_url,
+      view_count: metadata.view_count,
+      like_count: metadata.like_count,
+      tags: metadata.tags || [],
     }
   }
 
@@ -180,12 +188,12 @@ export class MetadataExtractor {
       duration: record.duration,
       thumbnail: record.thumbnail,
       formats: record.formats,
-      uploadDate: record.upload_date,
+      upload_date: record.upload_date,
       uploader: record.uploader,
-      uploaderUrl: record.uploader_url,
-      viewCount: record.view_count,
-      likeCount: record.like_count,
-      tags: record.tags,
+      uploader_url: record.uploader_url,
+      view_count: record.view_count,
+      like_count: record.like_count,
+      tags: record.tags
     }
   }
 }

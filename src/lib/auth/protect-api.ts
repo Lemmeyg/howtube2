@@ -1,8 +1,9 @@
+// IMPORTANT: This import must be mocked in tests for correct error handling
+import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@/lib/supabase/server'
-import { NextResponse } from 'next/server'
 
-export async function protectApi(handler: () => Promise<Response>) {
+export async function protectApi(handler: () => Promise<NextResponse>) {
   try {
     const cookieStore = cookies()
     const supabase = createServerClient(cookieStore)
@@ -15,8 +16,10 @@ export async function protectApi(handler: () => Promise<Response>) {
       )
     }
 
-    return handler()
+    const response = await handler()
+    return response
   } catch (error) {
+    console.log('protectApi error:', error)
     console.error('API route error:', error)
     return NextResponse.json(
       { error: 'Internal server error' },

@@ -10,11 +10,14 @@ export class StorageError extends Error {
   ) {
     super(message)
     this.name = 'StorageError'
+    // Restore prototype chain
+    Object.setPrototypeOf(this, new.target.prototype)
   }
 }
 
 export class VideoStorage {
   private static readonly storageDir = path.join(os.tmpdir(), 'howtube-videos')
+  private static readonly audioDir = path.join(os.tmpdir(), 'howtube-audio')
 
   /**
    * Initialize storage directory
@@ -22,6 +25,7 @@ export class VideoStorage {
   static async initialize(): Promise<void> {
     try {
       await fs.mkdir(this.storageDir, { recursive: true })
+      await fs.mkdir(this.audioDir, { recursive: true })
     } catch (err) {
       logger.error('Failed to initialize video storage:', err)
       throw new StorageError(
@@ -138,6 +142,43 @@ export class VideoStorage {
     } catch (err) {
       logger.error('Failed to cleanup videos:', err)
       throw new StorageError('Failed to cleanup videos', err instanceof Error ? err : undefined)
+    }
+  }
+
+  /**
+   * Get the path for an audio file
+   */
+  private static getAudioPath(videoId: string): string {
+    return path.join(this.audioDir, `${videoId}.mp3`)
+  }
+
+  /**
+   * Upload an audio file
+   */
+  static async uploadAudio(videoId: string, audioPath: string): Promise<string> {
+    try {
+      const targetPath = this.getAudioPath(videoId)
+      await fs.copyFile(audioPath, targetPath)
+      return targetPath
+    } catch (err) {
+      logger.error('Failed to upload audio:', err)
+      throw new StorageError('Failed to upload audio', err instanceof Error ? err : undefined)
+    }
+  }
+
+  /**
+   * Delete an audio file
+   */
+  static async deleteAudio(videoId: string): Promise<void> {
+    try {
+      await fs.unlink(this.getAudioPath(videoId))
+    } catch (err) {
+      // Ignore if file doesn't exist
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        return
+      }
+      logger.error('Failed to delete audio:', err)
+      throw new StorageError('Failed to delete audio', err instanceof Error ? err : undefined)
     }
   }
 }

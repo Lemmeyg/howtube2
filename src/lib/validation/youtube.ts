@@ -13,17 +13,23 @@ export function validateYouTubeUrl(url: string): boolean {
   // Regular expression patterns for different YouTube URL formats
   const patterns = [
     // Standard YouTube URL
-    /^(?:https?:\/\/)?(?:www\.)?youtube\.com\/watch\?(?=.*v=([a-zA-Z0-9_-]{11}))(?:\S+)?$/,
+    /^(?:https?:\/\/)?(?:www\.)?youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})(?:&\S+)?$/,
     // Short YouTube URL
-    /^(?:https?:\/\/)?(?:www\.)?youtu\.be\/([a-zA-Z0-9_-]{11})(?:\S+)?$/,
+    /^(?:https?:\/\/)?(?:www\.)?youtu\.be\/([a-zA-Z0-9_-]{11})(?:\?\S+)?$/,
     // Embedded YouTube URL
-    /^(?:https?:\/\/)?(?:www\.)?youtube\.com\/embed\/([a-zA-Z0-9_-]{11})(?:\S+)?$/,
+    /^(?:https?:\/\/)?(?:www\.)?youtube\.com\/embed\/([a-zA-Z0-9_-]{11})(?:\?\S+)?$/,
     // Mobile YouTube URL
-    /^(?:https?:\/\/)?(?:m\.)?youtube\.com\/watch\?(?=.*v=([a-zA-Z0-9_-]{11}))(?:\S+)?$/,
+    /^(?:https?:\/\/)?(?:m\.)?youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})(?:&\S+)?$/,
   ]
 
-  // Test URL against all patterns
-  return patterns.some(pattern => pattern.test(url))
+  // Test URL against all patterns and ensure video ID is exactly 11 characters
+  for (const pattern of patterns) {
+    const match = url.match(pattern)
+    if (match && match[1] && /^[a-zA-Z0-9_-]{11}$/.test(match[1])) {
+      return true
+    }
+  }
+  return false
 }
 
 /**
@@ -35,16 +41,16 @@ export function extractYouTubeVideoId(url: string): string | null {
 
   const patterns = [
     // Match standard and mobile YouTube URLs
-    /[?&]v=([a-zA-Z0-9_-]{11})/,
+    /[?&]v=([a-zA-Z0-9_-]{11})(?:&|$)/,
     // Match short YouTube URLs
-    /youtu\.be\/([a-zA-Z0-9_-]{11})/,
+    /youtu\.be\/([a-zA-Z0-9_-]{11})(?:\?|$)/,
     // Match embedded YouTube URLs
-    /embed\/([a-zA-Z0-9_-]{11})/,
+    /embed\/([a-zA-Z0-9_-]{11})(?:\?|$)/,
   ]
 
   for (const pattern of patterns) {
     const match = url.match(pattern)
-    if (match && match[1]) {
+    if (match && match[1] && /^[a-zA-Z0-9_-]{11}$/.test(match[1])) {
       return match[1]
     }
   }

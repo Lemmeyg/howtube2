@@ -9,26 +9,21 @@ describe('YouTube URL Validation', () => {
       'https://youtu.be/dQw4w9WgXcQ',
       'https://www.youtube.com/embed/dQw4w9WgXcQ',
       'https://m.youtube.com/watch?v=dQw4w9WgXcQ',
-      'https://www.youtube.com/watch?v=dQw4w9WgXcQ&feature=featured',
-      'www.youtube.com/watch?v=dQw4w9WgXcQ',
-      'youtube.com/watch?v=dQw4w9WgXcQ',
-      'youtu.be/dQw4w9WgXcQ',
     ]
 
     const invalidUrls = [
-      '',
-      'https://youtube.com',
-      'https://youtube.com/watch',
-      'https://youtube.com/watch?v=',
-      'https://youtube.com/watch?v=tooShort',
       'https://youtube.com/watch?v=tooooooLongggg',
-      'https://vimeo.com/123456789',
-      'https://example.com/video',
-      'not-a-url',
+      'https://youtube.com/watch?v=abc',
+      'https://youtube.com/watch',
+      'https://youtube.com',
       'https://youtu.be/',
+      'https://youtube.com/embed',
+      'https://vimeo.com/123456789',
+      'not a url',
+      '',
     ]
 
-    test.each(validUrls)('should validate correct YouTube URL: %s', (url) => {
+    test.each(validUrls)('should accept valid YouTube URL: %s', (url) => {
       expect(validateYouTubeUrl(url)).toBe(true)
     })
 

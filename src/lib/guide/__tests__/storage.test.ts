@@ -18,11 +18,11 @@ describe('GuideStorage', () => {
     sections: [
       {
         title: 'Section 1',
-        content: 'Section 1 content'
-      }
+        content: 'Section 1 content',
+      },
     ],
     keywords: ['test', 'guide'],
-    difficulty: 'intermediate'
+    difficulty: 'intermediate',
   }
 
   const mockGuideMetadataSnake = {
@@ -36,7 +36,7 @@ describe('GuideStorage', () => {
     keywords: mockGuide.keywords,
     difficulty: mockGuide.difficulty,
     status: 'completed',
-    error: undefined
+    error: undefined,
   }
 
   const mockGuideMetadata = {
@@ -50,20 +50,28 @@ describe('GuideStorage', () => {
     keywords: mockGuide.keywords,
     difficulty: mockGuide.difficulty,
     status: 'completed',
-    error: undefined
+    error: undefined,
   }
 
   let storage: GuideStorage
-  let mockSupabase: unknown
-  let mockQueryBuilder: unknown
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let mockSupabase: any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let mockQueryBuilder: any
 
   beforeEach(() => {
     jest.clearAllMocks()
     const { client, queryBuilder } = createMockSupabaseClient()
-    mockSupabase = client
-    mockQueryBuilder = queryBuilder
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    mockSupabase = client as any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    mockQueryBuilder = queryBuilder as any
     ;(createClient as jest.Mock).mockReturnValue(mockSupabase)
-    storage = new GuideStorage(mockSupabase as unknown)
+    mockSupabase.rpc = jest.fn()
+    mockSupabase.from = jest.fn(() => mockQueryBuilder)
+    mockQueryBuilder.delete = jest.fn().mockReturnThis()
+    mockQueryBuilder.eq = jest.fn().mockReturnThis()
+    storage = new GuideStorage(mockSupabase)
   })
 
   describe('createGuide', () => {
@@ -81,8 +89,13 @@ describe('GuideStorage', () => {
     })
 
     it('should handle database error', async () => {
-      mockQueryBuilder.single.mockResolvedValueOnce({ data: null, error: new Error('Database error') })
-      await expect(storage.createGuide(mockVideoId, mockUserId)).rejects.toThrow('Failed to create guide')
+      mockQueryBuilder.single.mockResolvedValueOnce({
+        data: null,
+        error: new Error('Database error'),
+      })
+      await expect(storage.createGuide(mockVideoId, mockUserId)).rejects.toThrow(
+        'Failed to create guide'
+      )
     })
   })
 
@@ -101,7 +114,9 @@ describe('GuideStorage', () => {
         return Promise.resolve({ data: null, error: new Error('Database error') })
       })
 
-      await expect(storage.updateGuide(mockGuideId, mockGuide)).rejects.toThrow('Failed to update guide')
+      await expect(storage.updateGuide(mockGuideId, mockGuide)).rejects.toThrow(
+        'Failed to update guide'
+      )
     })
   })
 
@@ -114,12 +129,17 @@ describe('GuideStorage', () => {
       expect(mockQueryBuilder.select).toHaveBeenCalled()
       expect(mockQueryBuilder.eq).toHaveBeenCalledWith('id', mockGuideId)
       expect(mockQueryBuilder.single).toHaveBeenCalled()
-      expect(result as Record<string, unknown>).toEqual(mockGuideMetadata)
+      expect(result).toEqual(mockGuideMetadata)
     })
 
     it('should handle database error', async () => {
-      mockQueryBuilder.single.mockResolvedValueOnce({ data: null, error: new Error('Database error') })
-      await expect(storage.getGuideMetadata(mockGuideId)).rejects.toThrow('Failed to get guide metadata')
+      mockQueryBuilder.single.mockResolvedValueOnce({
+        data: null,
+        error: new Error('Database error'),
+      })
+      await expect(storage.getGuideMetadata(mockGuideId)).rejects.toThrow(
+        'Failed to get guide metadata'
+      )
     })
   })
 
@@ -128,27 +148,40 @@ describe('GuideStorage', () => {
       mockSupabase.from.mockReturnValueOnce(mockQueryBuilder)
       mockQueryBuilder.select.mockReturnThis()
       mockQueryBuilder.eq.mockReturnThis()
-      mockQueryBuilder.order.mockResolvedValueOnce({ data: [{ title: mockGuide.title, content: mockGuide.sections[0].content }], error: null })
+      mockQueryBuilder.order.mockResolvedValueOnce({
+        data: [{ title: mockGuide.title, content: mockGuide.sections[0].content }],
+        error: null,
+      })
       const result = await storage.getGuideContent(mockGuideId)
 
       expect(mockSupabase.from).toHaveBeenCalledWith('video_guide_sections')
       expect(mockQueryBuilder.select).toHaveBeenCalled()
       expect(mockQueryBuilder.eq).toHaveBeenCalledWith('guide_id', mockGuideId)
       expect(mockQueryBuilder.order).toHaveBeenCalledWith('section_order', { ascending: true })
-      expect(result as Record<string, unknown>).toEqual({ guideId: mockGuideId, sections: [{ title: mockGuide.title, content: mockGuide.sections[0].content }] })
+      expect(result).toEqual({
+        guideId: mockGuideId,
+        sections: [{ title: mockGuide.title, content: mockGuide.sections[0].content }],
+      })
     })
 
     it('should handle database error', async () => {
       mockSupabase.from.mockReturnValueOnce(mockQueryBuilder)
       mockQueryBuilder.select.mockReturnThis()
       mockQueryBuilder.eq.mockReturnThis()
-      mockQueryBuilder.order.mockResolvedValueOnce({ data: null, error: new Error('Database error') })
-      await expect(storage.getGuideContent(mockGuideId)).rejects.toThrow('Failed to get guide content')
+      mockQueryBuilder.order.mockResolvedValueOnce({
+        data: null,
+        error: new Error('Database error'),
+      })
+      await expect(storage.getGuideContent(mockGuideId)).rejects.toThrow(
+        'Failed to get guide content'
+      )
     })
   })
 
   describe('deleteGuide', () => {
     it('should delete a guide', async () => {
+      mockQueryBuilder.delete = jest.fn().mockReturnThis()
+      mockQueryBuilder.eq = jest.fn().mockImplementation(() => Promise.resolve({ error: null }))
       await storage.deleteGuide(mockGuideId)
 
       expect(mockSupabase.from).toHaveBeenCalledWith('video_guides')
@@ -157,30 +190,33 @@ describe('GuideStorage', () => {
     })
 
     it('should handle database error', async () => {
-      mockQueryBuilder.then = jest.fn().mockImplementation((resolve: (value: unknown) => void) => {
-        resolve({ data: null, error: new Error('Database error') })
-        return Promise.resolve({ data: null, error: new Error('Database error') })
-      })
-
+      mockQueryBuilder.delete = jest.fn().mockReturnThis()
+      mockQueryBuilder.eq = jest
+        .fn()
+        .mockImplementation(() => Promise.resolve({ error: new Error('Database error') }))
       await expect(storage.deleteGuide(mockGuideId)).rejects.toThrow('Failed to delete guide')
     })
   })
 
   describe('listGuides', () => {
     it('should list user guides', async () => {
-      mockQueryBuilder.order.mockReturnValueOnce(Promise.resolve({ data: [mockGuideMetadataSnake], error: null }))
+      mockQueryBuilder.order.mockReturnValueOnce(
+        Promise.resolve({ data: [mockGuideMetadataSnake], error: null })
+      )
       const result = await storage.listGuides(mockUserId)
 
       expect(mockSupabase.from).toHaveBeenCalledWith('video_guides')
       expect(mockQueryBuilder.select).toHaveBeenCalled()
       expect(mockQueryBuilder.eq).toHaveBeenCalledWith('user_id', mockUserId)
       expect(mockQueryBuilder.order).toHaveBeenCalledWith('created_at', { ascending: false })
-      expect(result as Record<string, unknown>).toEqual([mockGuideMetadata])
+      expect(result).toEqual([mockGuideMetadata])
     })
 
     it('should handle database error', async () => {
-      mockQueryBuilder.order.mockReturnValueOnce(Promise.resolve({ data: null, error: new Error('Database error') }))
+      mockQueryBuilder.order.mockReturnValueOnce(
+        Promise.resolve({ data: null, error: new Error('Database error') })
+      )
       await expect(storage.listGuides(mockUserId)).rejects.toThrow('Failed to list guides')
     })
   })
-}) 
+})

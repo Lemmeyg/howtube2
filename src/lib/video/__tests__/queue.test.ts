@@ -1,7 +1,6 @@
 import { ProcessingQueue, ProcessingStatus } from '../queue'
 import { createClient } from '@supabase/supabase-js'
 import { QueueItem } from '../types'
-import { createMockSupabaseClient } from '../../../test/mocks/supabase'
 // import type { SupabaseClient } from '@supabase/supabase-js'
 // import type { PostgrestQueryBuilder } from '@supabase/postgrest-js'
 
@@ -37,20 +36,48 @@ describe('ProcessingQueue', () => {
   }
 
   let queue: ProcessingQueue
-  let mockSupabase: unknown
-  let mockQueryBuilder: unknown
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let mockSupabase: any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let mockQueryBuilder: any
 
   beforeEach(() => {
     jest.clearAllMocks()
-    const { client, queryBuilder } = createMockSupabaseClient()
-    mockSupabase = client
-    mockQueryBuilder = queryBuilder
+    // Create a fully chainable mockQueryBuilder and mock Supabase client
+    /* eslint-disable @typescript-eslint/no-explicit-any */
+    mockQueryBuilder = {
+      select: jest.fn().mockReturnThis(),
+      insert: jest.fn().mockReturnThis(),
+      update: jest.fn().mockReturnThis(),
+      delete: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+      single: jest.fn().mockReturnThis(),
+      order: jest.fn().mockReturnThis(),
+      lt: jest.fn().mockReturnThis(),
+      in: jest.fn().mockReturnThis(),
+      then: undefined,
+      catch: undefined,
+      url: new URL('http://localhost'),
+      headers: {},
+    } as any
+    mockSupabase = {
+      from: jest.fn(() => mockQueryBuilder),
+      auth: {
+        getSession: jest
+          .fn()
+          .mockResolvedValue({ data: { session: { user: { id: mockUserId } } } }),
+      },
+    } as any
+    /* eslint-enable @typescript-eslint/no-explicit-any */
+
     ;(createClient as jest.Mock).mockReturnValue(mockSupabase)
     queue = new ProcessingQueue(mockSupabase)
   })
 
   describe('addToQueue', () => {
     it('should add a video to the queue', async () => {
+      mockQueryBuilder.insert.mockReturnThis()
+      mockQueryBuilder.select.mockReturnThis()
       mockQueryBuilder.single.mockResolvedValueOnce({ data: mockQueueItem, error: null })
       const result = await queue.addToQueue(mockUserId, 'mock-url', mockVideoId)
 
@@ -66,13 +93,22 @@ describe('ProcessingQueue', () => {
     })
 
     it('should handle database error', async () => {
-      mockQueryBuilder.single.mockResolvedValueOnce({ data: null, error: new Error('Database error') })
-      await expect(queue.addToQueue(mockUserId, 'mock-url', mockVideoId)).rejects.toThrow('Failed to add video to queue')
+      mockQueryBuilder.insert.mockReturnThis()
+      mockQueryBuilder.select.mockReturnThis()
+      mockQueryBuilder.single.mockResolvedValueOnce({
+        data: null,
+        error: new Error('Database error'),
+      })
+      await expect(queue.addToQueue(mockUserId, 'mock-url', mockVideoId)).rejects.toThrow(
+        'Failed to add video to queue'
+      )
     })
   })
 
   describe('updateStatus', () => {
     it('should update video status', async () => {
+      mockQueryBuilder.update.mockReturnThis()
+      mockQueryBuilder.eq.mockResolvedValueOnce({ error: null })
       const status: ProcessingStatus = 'downloaded'
       const progress = 100
       const details = {}
@@ -88,16 +124,20 @@ describe('ProcessingQueue', () => {
     })
 
     it('should handle database error', async () => {
-      mockQueryBuilder.update.mockReturnValueOnce({ error: new Error('Database error') })
+      mockQueryBuilder.update.mockReturnThis()
+      mockQueryBuilder.eq.mockResolvedValueOnce({ error: new Error('Database error') })
       const status: ProcessingStatus = 'downloaded'
       const progress = 100
       const details = {}
-      await expect(queue.updateStatus(mockVideoId, status, progress, details)).rejects.toThrow('Failed to update video status')
+      await expect(queue.updateStatus(mockVideoId, status, progress, details)).rejects.toThrow(
+        'Failed to update video status'
+      )
     })
   })
 
   describe('getUserQueue', () => {
     it('should list user queue items', async () => {
+      mockQueryBuilder.eq.mockReturnThis()
       mockQueryBuilder.order.mockResolvedValueOnce({ data: [mockQueueItem], error: null })
       const result = await queue.getUserQueue(mockUserId)
 
@@ -108,10 +148,12 @@ describe('ProcessingQueue', () => {
     })
 
     it('should handle database error', async () => {
-      mockQueryBuilder.order.mockResolvedValueOnce({ data: null, error: new Error('Database error') })
+      mockQueryBuilder.eq.mockReturnThis()
+      mockQueryBuilder.order.mockResolvedValueOnce({
+        data: null,
+        error: new Error('Database error'),
+      })
       await expect(queue.getUserQueue(mockUserId)).rejects.toThrow('Failed to get user queue')
     })
   })
 })
-
-

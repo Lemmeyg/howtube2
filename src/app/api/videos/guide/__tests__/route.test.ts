@@ -70,8 +70,8 @@ describe('Guide API Route', () => {
     status: 'completed',
   }
 
-  let mockSupabase: unknown
-  let mockQueryBuilder: unknown
+  let mockSupabase: Record<string, unknown>
+  let mockQueryBuilder: Record<string, unknown>
 
   const createMockQueryBuilder = () => {
     return {
@@ -92,8 +92,8 @@ describe('Guide API Route', () => {
   beforeEach(() => {
     jest.clearAllMocks()
     const { client, queryBuilder } = createMockSupabaseClient()
-    mockSupabase = client
-    mockQueryBuilder = queryBuilder
+    mockSupabase = client as Record<string, unknown>
+    mockQueryBuilder = queryBuilder as Record<string, unknown>
     mockSupabase.from = jest.fn(() => mockQueryBuilder)
     mockSupabase.auth = {
       getSession: jest.fn().mockResolvedValue({
@@ -122,13 +122,12 @@ describe('Guide API Route', () => {
       jest.spyOn(GuideStorage.prototype, 'createGuide').mockResolvedValue(mockGuideMetadata)
 
       // Force the correct mock for the transcription query
-      const mockQueryBuilder = {
-        ...createMockQueryBuilder(),
+      const mockQueryBuilder = Object.assign({}, createMockQueryBuilder(), {
         single: jest.fn().mockResolvedValue({
           data: mockTranscription,
           error: null,
         }),
-      }
+      }) as Record<string, unknown>
       mockSupabase.from = jest.fn(() => mockQueryBuilder)
 
       const request = new Request('http://localhost/api/videos/guide', {
@@ -164,13 +163,12 @@ describe('Guide API Route', () => {
     })
 
     it('should handle missing transcription', async () => {
-      const mockQueryBuilder = {
-        ...createMockQueryBuilder(),
+      const mockQueryBuilder = Object.assign({}, createMockQueryBuilder(), {
         single: jest.fn().mockResolvedValue({
           data: null,
           error: null,
         }),
-      } as unknown
+      }) as Record<string, unknown>
       mockSupabase.from = jest.fn(() => mockQueryBuilder)
 
       const request = new Request('http://localhost/api/videos/guide', {

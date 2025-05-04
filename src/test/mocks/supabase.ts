@@ -1,7 +1,5 @@
-import { PostgrestQueryBuilder } from '@supabase/postgrest-js'
-
 export const createMockQueryBuilder = () => {
-  const builder = {
+  return {
     select: jest.fn().mockReturnThis(),
     insert: jest.fn().mockReturnThis(),
     update: jest.fn().mockReturnThis(),
@@ -16,9 +14,7 @@ export const createMockQueryBuilder = () => {
     catch: jest.fn().mockImplementation(_reject => {
       return Promise.resolve({ data: null, error: null })
     }),
-  } as unknown as PostgrestQueryBuilder<unknown, unknown, unknown>
-
-  return builder
+  }
 }
 
 export function createMockSupabaseClient(): {

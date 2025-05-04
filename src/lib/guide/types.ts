@@ -7,19 +7,29 @@ export interface GuideConfig {
   includeTimestamps?: boolean
 }
 
+export interface GuideSection {
+  id: string
+  title: string
+  content: string
+  timestamp?: {
+    start: number
+    end: number
+  }
+  images?: string[]
+  order: number
+}
+
 export interface Guide {
+  id?: string
   title: string
   summary: string
-  sections: Array<{
-    title: string
-    content: string
-    timestamp?: {
-      start: number
-      end: number
-    }
-  }>
+  sections: GuideSection[]
   keywords: string[]
   difficulty: 'beginner' | 'intermediate' | 'advanced'
+  metadata?: Record<string, unknown>
+  createdAt?: string
+  updatedAt?: string
+  status?: 'pending' | 'generating' | 'completed' | 'error'
 }
 
 export interface GuideMetadata {

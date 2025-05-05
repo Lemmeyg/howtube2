@@ -1,3 +1,5 @@
+'use client'
+
 import { createContext, useContext, useEffect, useState } from 'react'
 import { AuthContextType, AuthState, AuthUser } from '@/types/auth'
 import { supabase } from '@/lib/supabase/client'
@@ -122,4 +124,4 @@ export function useAuth() {
     throw new Error('useAuth must be used within an AuthProvider')
   }
   return context
-} 
+}

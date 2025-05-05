@@ -1,3 +1,5 @@
+'use client'
+
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -22,7 +24,10 @@ const profileSchema = z.object({
     .string()
     .min(3, 'Username must be at least 3 characters')
     .max(30, 'Username must be less than 30 characters')
-    .regex(/^[a-zA-Z0-9_-]+$/, 'Username can only contain letters, numbers, underscores, and hyphens'),
+    .regex(
+      /^[a-zA-Z0-9_-]+$/,
+      'Username can only contain letters, numbers, underscores, and hyphens'
+    ),
   bio: z.string().max(160, 'Bio must be less than 160 characters').optional(),
   avatarUrl: z.string().url('Please enter a valid URL').optional(),
 })
@@ -72,7 +77,8 @@ export function ProfileForm() {
 
       setSuccess(true)
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'An error occurred while updating your profile'
+      const errorMessage =
+        err instanceof Error ? err.message : 'An error occurred while updating your profile'
       setError(errorMessage)
     }
   }
@@ -81,9 +87,7 @@ export function ProfileForm() {
     <div className="mx-auto max-w-2xl space-y-6">
       <div className="space-y-2">
         <h1 className="text-2xl font-bold">Profile Settings</h1>
-        <p className="text-gray-500 dark:text-gray-400">
-          Update your profile information
-        </p>
+        <p className="text-gray-500 dark:text-gray-400">Update your profile information</p>
       </div>
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -94,10 +98,7 @@ export function ProfileForm() {
               <FormItem>
                 <FormLabel>Full Name</FormLabel>
                 <FormControl>
-                  <Input
-                    placeholder="John Doe"
-                    {...field}
-                  />
+                  <Input placeholder="John Doe" {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -110,10 +111,7 @@ export function ProfileForm() {
               <FormItem>
                 <FormLabel>Username</FormLabel>
                 <FormControl>
-                  <Input
-                    placeholder="johndoe"
-                    {...field}
-                  />
+                  <Input placeholder="johndoe" {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -143,11 +141,7 @@ export function ProfileForm() {
               <FormItem>
                 <FormLabel>Avatar URL</FormLabel>
                 <FormControl>
-                  <Input
-                    type="url"
-                    placeholder="https://example.com/avatar.jpg"
-                    {...field}
-                  />
+                  <Input type="url" placeholder="https://example.com/avatar.jpg" {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -170,4 +164,4 @@ export function ProfileForm() {
       </Form>
     </div>
   )
-} 
+}

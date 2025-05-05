@@ -1,3 +1,5 @@
+'use client'
+
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -40,9 +42,10 @@ export function ResetPasswordForm() {
       await resetPassword(data.email)
       setSuccess(true)
     } catch (err) {
-      const errorMessage = err instanceof Error 
-        ? err.message 
-        : 'An error occurred while resetting your password. Please try again.'
+      const errorMessage =
+        err instanceof Error
+          ? err.message
+          : 'An error occurred while resetting your password. Please try again.'
       setError(errorMessage)
     }
   }
@@ -80,11 +83,7 @@ export function ResetPasswordForm() {
               <FormItem>
                 <FormLabel>Email</FormLabel>
                 <FormControl>
-                  <Input
-                    type="email"
-                    placeholder="m@example.com"
-                    {...field}
-                  />
+                  <Input type="email" placeholder="m@example.com" {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -108,4 +107,4 @@ export function ResetPasswordForm() {
       </div>
     </div>
   )
-} 
+}

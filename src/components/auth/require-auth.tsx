@@ -1,3 +1,5 @@
+'use client'
+
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
@@ -25,4 +27,4 @@ export function RequireAuth({ children }: { children: React.ReactNode }) {
   }
 
   return <>{children}</>
-} 
+}

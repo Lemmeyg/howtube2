@@ -1,3 +1,5 @@
+'use client'
+
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -65,11 +67,7 @@ export function LoginForm() {
               <FormItem>
                 <FormLabel>Email</FormLabel>
                 <FormControl>
-                  <Input
-                    type="email"
-                    placeholder="m@example.com"
-                    {...field}
-                  />
+                  <Input type="email" placeholder="m@example.com" {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -82,11 +80,7 @@ export function LoginForm() {
               <FormItem>
                 <FormLabel>Password</FormLabel>
                 <FormControl>
-                  <Input
-                    type="password"
-                    placeholder="Enter your password"
-                    {...field}
-                  />
+                  <Input type="password" placeholder="Enter your password" {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -103,10 +97,7 @@ export function LoginForm() {
         </form>
       </Form>
       <div className="text-center text-sm">
-        <Link
-          href="/reset-password"
-          className="text-primary hover:underline"
-        >
+        <Link href="/reset-password" className="text-primary hover:underline">
           Forgot your password?
         </Link>
       </div>
@@ -118,4 +109,4 @@ export function LoginForm() {
       </div>
     </div>
   )
-} 
+}

@@ -1,3 +1,4 @@
+'use client'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -53,9 +54,10 @@ export function SignupForm() {
       })
       router.push('/')
     } catch (err) {
-      const errorMessage = err instanceof Error 
-        ? err.message 
-        : 'An error occurred during signup. The email might already be in use or the service is temporarily unavailable.'
+      const errorMessage =
+        err instanceof Error
+          ? err.message
+          : 'An error occurred during signup. The email might already be in use or the service is temporarily unavailable.'
       setError(errorMessage)
     }
   }
@@ -77,10 +79,7 @@ export function SignupForm() {
               <FormItem>
                 <FormLabel>Full Name</FormLabel>
                 <FormControl>
-                  <Input
-                    placeholder="John Doe"
-                    {...field}
-                  />
+                  <Input placeholder="John Doe" {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -93,11 +92,7 @@ export function SignupForm() {
               <FormItem>
                 <FormLabel>Email</FormLabel>
                 <FormControl>
-                  <Input
-                    type="email"
-                    placeholder="m@example.com"
-                    {...field}
-                  />
+                  <Input type="email" placeholder="m@example.com" {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -110,11 +105,7 @@ export function SignupForm() {
               <FormItem>
                 <FormLabel>Password</FormLabel>
                 <FormControl>
-                  <Input
-                    type="password"
-                    placeholder="Create a password"
-                    {...field}
-                  />
+                  <Input type="password" placeholder="Create a password" {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -138,4 +129,4 @@ export function SignupForm() {
       </div>
     </div>
   )
-} 
+}

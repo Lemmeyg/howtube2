@@ -6,6 +6,7 @@ import GuideCard from '@/components/guide/GuideCard'
 import { supabase } from '@/lib/supabase/client'
 import { GuideStorage } from '@/lib/guide/storage'
 import { GuideMetadata } from '@/lib/guide/types'
+import SubscriptionManagement from './subscription'
 
 export default function DashboardPage() {
   const [guides, setGuides] = useState<GuideMetadata[]>([])
@@ -45,6 +46,7 @@ export default function DashboardPage() {
       <p className="mb-8 text-muted-foreground">
         Welcome to your dashboard! Here you&apos;ll see your guides and recent activity.
       </p>
+      <SubscriptionManagement />
       <Grid cols="grid-cols-1 md:grid-cols-3" gap="gap-6" className="mb-8">
         <Card>
           <CardHeader>

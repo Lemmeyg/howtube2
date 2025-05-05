@@ -5,6 +5,7 @@ import { Navbar } from '@/components/navbar'
 import Layout from '@/components/ui/Layout'
 import Container from '@/components/ui/Container'
 import ClientRoot from '@/components/ClientRoot'
+import { Breadcrumbs } from '@/components/Breadcrumbs'
 
 const inter = Inter({
   subsets: ['latin'],
@@ -24,6 +25,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Container>
             <ClientRoot>
               <Navbar />
+              <Breadcrumbs />
               {children}
             </ClientRoot>
           </Container>

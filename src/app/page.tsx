@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Code, Database, Terminal } from 'lucide-react'
+import { Code, Database, Terminal, Zap, ListChecks, Users } from 'lucide-react'
 
 export default function Home() {
   const [url, setUrl] = useState('')
@@ -69,6 +69,35 @@ export default function Home() {
           </div>
         </section>
 
+        {/* Feature Highlights Section */}
+        <section className="w-full py-12 bg-white">
+          <div className="container px-4 md:px-6 mx-auto">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              <div className="flex flex-col items-center text-center">
+                <Zap className="h-10 w-10 text-blue-600 mb-2" aria-hidden="true" />
+                <h3 className="text-lg font-semibold mb-1">Fast & Accurate Transcription</h3>
+                <p className="text-gray-600 text-sm">
+                  Leverage state-of-the-art AI to transcribe videos with high accuracy and speed.
+                </p>
+              </div>
+              <div className="flex flex-col items-center text-center">
+                <ListChecks className="h-10 w-10 text-blue-600 mb-2" aria-hidden="true" />
+                <h3 className="text-lg font-semibold mb-1">AI-Powered Step-by-Step Guides</h3>
+                <p className="text-gray-600 text-sm">
+                  Automatically generate structured, easy-to-follow guides from any tutorial video.
+                </p>
+              </div>
+              <div className="flex flex-col items-center text-center">
+                <Users className="h-10 w-10 text-blue-600 mb-2" aria-hidden="true" />
+                <h3 className="text-lg font-semibold mb-1">Seamless Collaboration</h3>
+                <p className="text-gray-600 text-sm">
+                  Share, edit, and collaborate on guides with your team or the community.
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
         {/* Gliding Cards Section */}
         <section className="w-full py-12 overflow-hidden">
           <div className="container px-4 md:px-6 mx-auto">
@@ -122,6 +151,24 @@ export default function Home() {
                 </Card>
               </div>
             </div>
+          </div>
+        </section>
+
+        {/* Call-to-Action Section */}
+        <section className="w-full py-12 bg-gradient-to-r from-blue-600 to-blue-400">
+          <div className="container px-4 md:px-6 mx-auto flex flex-col items-center">
+            <h2 className="text-2xl md:text-3xl font-bold text-white mb-4 text-center">
+              Ready to turn your next video into a guide?
+            </h2>
+            <Button
+              size="lg"
+              className="bg-white text-blue-700 font-semibold px-8 py-3 rounded-lg shadow-lg hover:bg-blue-50 focus-visible:ring-2 focus-visible:ring-white"
+              asChild
+            >
+              <a href="#" aria-label="Get Started">
+                Get Started
+              </a>
+            </Button>
           </div>
         </section>
       </div>

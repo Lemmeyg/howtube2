@@ -1,12 +1,10 @@
 import { NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
 import { createServerActionSupabaseClient } from '@/lib/supabase/server'
 import { getUserRole } from './getUserRole'
 
 export async function requireAdmin(handler: (userId: string) => Promise<NextResponse>) {
   try {
-    const cookieStore = cookies()
-    const supabase = createServerActionSupabaseClient(cookieStore)
+    const supabase = createServerActionSupabaseClient()
     const {
       data: { session },
     } = await supabase.auth.getSession()

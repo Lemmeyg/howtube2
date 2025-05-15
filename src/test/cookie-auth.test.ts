@@ -4,19 +4,24 @@ describe('Supabase Auth Cookie', () => {
   it('should set a cookie after successful login', async () => {
     // Mock fetch to simulate a Set-Cookie header
     const setCookieValue = 'sb-test-auth-token=abc123; Path=/; HttpOnly; Secure; SameSite=Lax'
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        access_token: 'test-access-token',
-        refresh_token: 'test-refresh-token',
-        user: { id: 'test-user', email: 'test@example.com' },
-        expires_in: 3600,
-        token_type: 'bearer',
-      }),
-      headers: {
-        get: (header: string) => (header.toLowerCase() === 'set-cookie' ? setCookieValue : null),
-      },
-    }) as unknown as Response
+    global.fetch = jest.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          access_token: 'test-access-token',
+          refresh_token: 'test-refresh-token',
+          user: { id: 'test-user', email: 'test@example.com' },
+          expires_in: 3600,
+          token_type: 'bearer',
+        }),
+        {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+            'Set-Cookie': setCookieValue,
+          },
+        }
+      )
+    )
 
     // Perform login
     const { data, error } = await supabase.auth.signInWithPassword({

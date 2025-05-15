@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Input } from '@/components/ui/input'
 import { Grid } from '@/components/ui/Grid'
@@ -8,7 +8,7 @@ import GuideCard from '@/components/guide/GuideCard'
 import { supabase } from '@/lib/supabase/client'
 import { GuideMetadata } from '@/lib/guide/types'
 
-export default function SearchPage() {
+function SearchContent() {
   const router = useRouter()
   const params = useSearchParams()
   const initialQuery = params.get('q') || ''
@@ -23,16 +23,19 @@ export default function SearchPage() {
     if (query) {
       setLoading(true)
       setError('')
-      supabase
-        .from('video_guides')
-        .select('*')
-        .eq('status', 'completed')
-        .ilike('title', `%${query}%`)
-        .then(({ data, error }) => {
+      ;(async () => {
+        try {
+          const { data, error } = await supabase
+            .from('video_guides')
+            .select('*')
+            .eq('status', 'completed')
+            .ilike('title', `%${query}%`)
           if (error) setError(error.message)
           else setGuides(data as GuideMetadata[])
-        })
-        .finally(() => setLoading(false))
+        } finally {
+          setLoading(false)
+        }
+      })()
     } else {
       setGuides([])
     }
@@ -121,5 +124,13 @@ export default function SearchPage() {
         </Grid>
       )}
     </div>
+  )
+}
+
+export default function SearchPage() {
+  return (
+    <Suspense fallback={<div>Loading search...</div>}>
+      <SearchContent />
+    </Suspense>
   )
 }

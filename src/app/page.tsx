@@ -8,7 +8,7 @@ import { Code, Database, Terminal, Zap, ListChecks, Users } from 'lucide-react'
 import { Navbar } from '@/components/navbar'
 import { Breadcrumbs } from '@/components/Breadcrumbs'
 
-export default function AppPage({ children: _children }: { children: React.ReactNode }) {
+export default function AppPage() {
   const [url, setUrl] = useState('')
   const [error, setError] = useState('')
   const router = useRouter()
@@ -40,8 +40,8 @@ export default function AppPage({ children: _children }: { children: React.React
               Into Detailed Documentation
             </h1>
             <p className="mx-auto max-w-2xl text-center text-lg text-gray-600 mb-8">
-              Instantly convert any how-to video into comprehensive, searchable documentation
-              that your users will love.
+              Instantly convert any how-to video into comprehensive, searchable documentation that
+              your users will love.
             </p>
             <form
               className="w-full max-w-xl mx-auto flex flex-col sm:flex-row items-center gap-3 bg-white/80 shadow-lg rounded-xl px-4 py-3"
@@ -81,16 +81,14 @@ export default function AppPage({ children: _children }: { children: React.React
               <Zap className="h-10 w-10 text-blue-600 mb-2" aria-hidden="true" />
               <h3 className="text-lg font-semibold mb-1">Fast & Accurate Transcription</h3>
               <p className="text-gray-600 text-sm">
-                Leverage state-of-the-art AI to transcribe videos with high accuracy and
-                speed.
+                Leverage state-of-the-art AI to transcribe videos with high accuracy and speed.
               </p>
             </div>
             <div className="flex flex-col items-center text-center">
               <ListChecks className="h-10 w-10 text-blue-600 mb-2" aria-hidden="true" />
               <h3 className="text-lg font-semibold mb-1">AI-Powered Step-by-Step Guides</h3>
               <p className="text-gray-600 text-sm">
-                Automatically generate structured, easy-to-follow guides from any tutorial
-                video.
+                Automatically generate structured, easy-to-follow guides from any tutorial video.
               </p>
             </div>
             <div className="flex flex-col items-center text-center">
@@ -120,17 +118,13 @@ export default function AppPage({ children: _children }: { children: React.React
                 <CardContent>
                   <div className="flex items-center space-x-2">
                     <Code className="h-5 w-5 text-primary" />
-                    <span className="text-sm text-muted-foreground">
-                      Frontend Development
-                    </span>
+                    <span className="text-sm text-muted-foreground">Frontend Development</span>
                   </div>
                 </CardContent>
               </Card>
               <Card className="min-w-[300px] bg-white border-primary/20 hover:border-primary/40 transition-colors shadow-md">
                 <CardHeader>
-                  <CardTitle className="text-2xl text-primary">
-                    Python for Data Science
-                  </CardTitle>
+                  <CardTitle className="text-2xl text-primary">Python for Data Science</CardTitle>
                   <CardDescription className="text-lg">
                     Master data analysis with Python and popular libraries
                   </CardDescription>
@@ -144,9 +138,7 @@ export default function AppPage({ children: _children }: { children: React.React
               </Card>
               <Card className="min-w-[300px] bg-white border-primary/20 hover:border-primary/40 transition-colors shadow-md">
                 <CardHeader>
-                  <CardTitle className="text-2xl text-primary">
-                    Linux Command Line Basics
-                  </CardTitle>
+                  <CardTitle className="text-2xl text-primary">Linux Command Line Basics</CardTitle>
                   <CardDescription className="text-lg">
                     Essential commands and shell scripting for beginners
                   </CardDescription>
@@ -154,9 +146,7 @@ export default function AppPage({ children: _children }: { children: React.React
                 <CardContent>
                   <div className="flex items-center space-x-2">
                     <Terminal className="h-5 w-5 text-primary" />
-                    <span className="text-sm text-muted-foreground">
-                      System Administration
-                    </span>
+                    <span className="text-sm text-muted-foreground">System Administration</span>
                   </div>
                 </CardContent>
               </Card>

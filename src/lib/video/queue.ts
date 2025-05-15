@@ -2,7 +2,13 @@ import { SupabaseClient } from '@supabase/supabase-js'
 import { VideoStorage } from './storage'
 import { logger } from '@/config/logger'
 
-export type ProcessingStatus = 'pending' | 'downloading' | 'downloaded' | 'failed'
+export type ProcessingStatus =
+  | 'pending'
+  | 'downloading'
+  | 'downloaded'
+  | 'transcribing'
+  | 'completed'
+  | 'failed'
 
 export interface QueueItem {
   id: string
@@ -15,8 +21,10 @@ export interface QueueItem {
   eta?: string
   size?: string
   error?: string
+  current_step?: string
   createdAt: Date
   updatedAt: Date
+  transcription_job_id?: string
 }
 
 interface DatabaseRecord {
@@ -30,8 +38,10 @@ interface DatabaseRecord {
   eta?: string
   size?: string
   error?: string
+  current_step?: string
   created_at: string
   updated_at: string
+  transcription_job_id?: string
 }
 
 export class ProcessingQueue {
@@ -216,8 +226,10 @@ export class ProcessingQueue {
       eta: record.eta,
       size: record.size,
       error: record.error,
+      current_step: record.current_step,
       createdAt: new Date(record.created_at),
       updatedAt: new Date(record.updated_at),
+      transcription_job_id: record.transcription_job_id,
     }
   }
 }

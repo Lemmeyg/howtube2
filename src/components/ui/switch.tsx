@@ -1,32 +1,26 @@
 import * as React from 'react'
 
-interface SwitchProps {
+interface SwitchProps
+  extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'onChange' | 'checked'> {
   checked: boolean
-  onCheckedChange: (checked: boolean) => void
-  id?: string
-  className?: string
+  onCheckedChange?: (checked: boolean) => void
 }
 
-export const Switch: React.FC<SwitchProps> = ({ checked, onCheckedChange, id, className = '' }) => (
-  <button
-    type="button"
-    role="switch"
-    aria-checked={checked}
-    id={id}
-    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 ${className} ${checked ? 'bg-blue-600' : 'bg-gray-300'}`}
-    onClick={() => onCheckedChange(!checked)}
-    tabIndex={0}
-    onKeyDown={e => {
-      if (e.key === ' ' || e.key === 'Enter') {
-        e.preventDefault()
-        onCheckedChange(!checked)
-      }
-    }}
-  >
-    <span
-      className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${checked ? 'translate-x-5' : 'translate-x-1'}`}
-    />
-  </button>
+export const Switch = React.forwardRef<HTMLInputElement, SwitchProps>(
+  ({ className, checked, onCheckedChange, ...props }, ref) => (
+    <label className={'inline-flex items-center cursor-pointer relative ' + (className || '')}>
+      <input
+        type="checkbox"
+        className="sr-only peer"
+        ref={ref}
+        checked={checked}
+        onChange={e => onCheckedChange?.(e.target.checked)}
+        {...props}
+      />
+      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer peer-checked:bg-blue-600 transition-colors"></div>
+      <div className="absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform peer-checked:translate-x-5"></div>
+    </label>
+  )
 )
 
-export default Switch
+Switch.displayName = 'Switch'

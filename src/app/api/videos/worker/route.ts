@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { createServerActionSupabaseClient } from '@/lib/supabase/server'
 import { ProcessingQueue } from '@/lib/video/queue'
 import { logger } from '@/config/logger'
-import { YtDlpDownloader } from '@/lib/video/yt-dlp'
+import { YtDlp } from '@/lib/video/yt-dlp'
 import { VideoStorage } from '@/lib/video/storage'
 import { AssemblyAI } from '@/lib/transcription/assemblyai'
 import { extractAudio } from '@/lib/transcription/audio'
@@ -39,31 +39,33 @@ export async function POST() {
     videoId = queueEntry.video_id
     const { video_url: videoUrl, user_id: userId } = queueEntry
 
-    await queue.updateStatus(id, 'downloading', 0)
+    await queue.updateStatus(id!, 'downloading', 0)
     logger.info(`Worker: Started downloading ${id}`)
 
-    const downloader = new YtDlpDownloader()
-    videoPath = await downloader.download(videoUrl, videoId, progress => {
-      const numericPercentage = parseFloat(progress.percentage.toFixed(2))
-      queue.updateStatus(id!, 'downloading', numericPercentage, {
-        speed: progress.speed,
-        eta: progress.eta,
-        size: progress.size,
-      })
+    const downloader = new YtDlp()
+    videoPath = await downloader.downloadVideo(videoUrl, {
+      onProgress: progress => {
+        const numericPercentage = parseFloat(progress.percentage.toFixed(2))
+        queue.updateStatus(id!, 'downloading', numericPercentage, {
+          speed: progress.speed,
+          eta: progress.eta,
+          size: progress.size,
+        })
+      },
     })
 
     logger.info(`Worker: Finished downloading ${id} to ${videoPath}`)
-    await queue.updateStatus(id, 'downloaded', 100)
+    await queue.updateStatus(id!, 'downloaded', 100)
 
     logger.info(`Worker: Starting audio extraction for ${id}`)
-    await queue.updateStatus(id, 'transcribing', 0, { current_step: 'audio_extraction' })
+    await queue.updateStatus(id!, 'transcribing', 0, { current_step: 'audio_extraction' })
 
     audioPath = path.join('/tmp', `${videoId}.mp3`)
     await extractAudio(videoPath, audioPath)
     logger.info(`Worker: Audio extracted for ${id} to ${audioPath}`)
 
-    await queue.updateStatus(id, 'transcribing', 25, { current_step: 'uploading_audio' })
-    const audioUrl = await VideoStorage.uploadAudio(videoId, audioPath)
+    await queue.updateStatus(id!, 'transcribing', 25, { current_step: 'uploading_audio' })
+    const audioUrl = await VideoStorage.uploadAudio(videoId!, audioPath)
     logger.info(`Worker: Audio uploaded for ${id} to ${audioUrl}`)
 
     if (!apiConfig.assemblyAI.apiKey) {
@@ -71,19 +73,19 @@ export async function POST() {
     }
     const assemblyAI = new AssemblyAI(apiConfig.assemblyAI.apiKey)
 
-    await queue.updateStatus(id, 'transcribing', 50, { current_step: 'submitting_transcription' })
+    await queue.updateStatus(id!, 'transcribing', 50, { current_step: 'submitting_transcription' })
     const transcriptionJob = await assemblyAI.submitTranscription(audioUrl, {
       language_code: 'en',
       punctuate: true,
       format_text: true,
       speaker_labels: true,
     })
-    logger.info(`Worker: Transcription submitted for ${id}, job ID: ${transcriptionJob.id}`)
+    logger.info(`Worker: Transcription submitted for ${id}, job ID: ${transcriptionJob}`)
 
     const { error: transcriptionError } = await supabase.from('video_transcriptions').insert({
       video_id: videoId,
       processing_id: id,
-      transcription_id: transcriptionJob.id,
+      transcription_id: transcriptionJob,
       status: 'processing',
       user_id: userId,
     })
@@ -92,13 +94,13 @@ export async function POST() {
       logger.error('Worker: Failed to save transcription job ID', transcriptionError)
       throw new Error(`Failed to save transcription job ID: ${transcriptionError.message}`)
     }
-    await queue.updateStatus(id, 'transcribing', 75, {
+    await queue.updateStatus(id!, 'transcribing', 75, {
       current_step: 'transcription_pending',
-      transcription_job_id: transcriptionJob.id,
+      transcription_job_id: transcriptionJob,
     })
-    logger.info(`Worker: Transcription job ID ${transcriptionJob.id} saved for ${id}`)
+    logger.info(`Worker: Transcription job ID ${transcriptionJob} saved for ${id}`)
 
-    await queue.updateStatus(id, 'completed', 100, { current_step: 'pipeline_complete' })
+    await queue.updateStatus(id!, 'completed', 100, { current_step: 'pipeline_complete' })
     logger.info(
       `Worker: Video ${id} processing pipeline complete. Transcription pending with AssemblyAI.`
     )
@@ -106,7 +108,7 @@ export async function POST() {
     return NextResponse.json({
       message: 'Video processing complete, transcription submitted',
       id,
-      transcriptionId: transcriptionJob.id,
+      transcriptionId: transcriptionJob,
     })
   } catch (error: unknown) {
     logger.error(`Worker error for video ${id || 'unknown'}:`, error)
@@ -119,7 +121,7 @@ export async function POST() {
     if (id) {
       const supabase = createServerActionSupabaseClient()
       const queue = new ProcessingQueue(supabase)
-      await queue.updateStatus(id, 'failed', 0, { error: errorMessage, current_step: 'error' })
+      await queue.updateStatus(id!, 'failed', 0, { error: errorMessage, current_step: 'error' })
     }
     return NextResponse.json({ error: 'Worker failed', details: errorMessage }, { status: 500 })
   } finally {

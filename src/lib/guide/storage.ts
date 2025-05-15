@@ -1,20 +1,7 @@
 import { SupabaseClient } from '@supabase/supabase-js'
 import { Guide } from './openai'
+import { GuideMetadata } from './types'
 import { logger } from '@/config/logger'
-
-export interface GuideMetadata {
-  id: string
-  videoId: string
-  title: string
-  summary: string
-  keywords: string[]
-  difficulty: string
-  status: 'generating' | 'completed' | 'error'
-  error?: string
-  createdAt: string
-  updatedAt: string
-  userId: string
-}
 
 export interface GuideContent {
   guideId: string
@@ -28,13 +15,16 @@ export interface GuideContent {
   }>
 }
 
+const allowedDifficulties = ['beginner', 'intermediate', 'advanced'] as const
+type Difficulty = (typeof allowedDifficulties)[number]
+function toDifficulty(value: string): Difficulty {
+  return allowedDifficulties.includes(value as Difficulty) ? (value as Difficulty) : 'beginner'
+}
+
 export class GuideStorage {
   constructor(private supabase: SupabaseClient) {}
 
-  async createGuide(
-    videoId: string,
-    userId: string
-  ): Promise<{ id: string }> {
+  async createGuide(videoId: string, userId: string): Promise<{ id: string }> {
     try {
       const { data, error } = await this.supabase
         .from('video_guides')
@@ -54,10 +44,7 @@ export class GuideStorage {
     }
   }
 
-  async updateGuide(
-    guideId: string,
-    guide: Guide
-  ): Promise<void> {
+  async updateGuide(guideId: string, guide: Guide): Promise<void> {
     try {
       // Start a transaction
       const { error } = await this.supabase.rpc('update_guide', {
@@ -77,10 +64,7 @@ export class GuideStorage {
     }
   }
 
-  async markGuideError(
-    guideId: string,
-    error: string
-  ): Promise<void> {
+  async markGuideError(guideId: string, error: string): Promise<void> {
     try {
       const { error: dbError } = await this.supabase
         .from('video_guides')
@@ -97,9 +81,7 @@ export class GuideStorage {
     }
   }
 
-  async getGuideMetadata(
-    guideId: string
-  ): Promise<GuideMetadata> {
+  async getGuideMetadata(guideId: string): Promise<GuideMetadata> {
     try {
       const { data, error } = await this.supabase
         .from('video_guides')
@@ -116,9 +98,8 @@ export class GuideStorage {
         title: data.title,
         summary: data.summary,
         keywords: data.keywords,
-        difficulty: data.difficulty,
+        difficulty: toDifficulty(data.difficulty),
         status: data.status,
-        error: data.error,
         createdAt: data.created_at,
         updatedAt: data.updated_at,
         userId: data.user_id,
@@ -129,9 +110,7 @@ export class GuideStorage {
     }
   }
 
-  async getGuideContent(
-    guideId: string
-  ): Promise<GuideContent> {
+  async getGuideContent(guideId: string): Promise<GuideContent> {
     try {
       const { data, error } = await this.supabase
         .from('video_guide_sections')
@@ -160,14 +139,9 @@ export class GuideStorage {
     }
   }
 
-  async deleteGuide(
-    guideId: string
-  ): Promise<void> {
+  async deleteGuide(guideId: string): Promise<void> {
     try {
-      const { error } = await this.supabase
-        .from('video_guides')
-        .delete()
-        .eq('id', guideId)
+      const { error } = await this.supabase.from('video_guides').delete().eq('id', guideId)
 
       if (error) throw error
     } catch (error) {
@@ -176,15 +150,9 @@ export class GuideStorage {
     }
   }
 
-  async listGuides(
-    userId: string,
-    videoId?: string
-  ): Promise<GuideMetadata[]> {
+  async listGuides(userId: string, videoId?: string): Promise<GuideMetadata[]> {
     try {
-      let query = this.supabase
-        .from('video_guides')
-        .select('*')
-        .eq('user_id', userId)
+      let query = this.supabase.from('video_guides').select('*').eq('user_id', userId)
 
       if (videoId) {
         query = query.eq('video_id', videoId)
@@ -200,9 +168,8 @@ export class GuideStorage {
         title: guide.title,
         summary: guide.summary,
         keywords: guide.keywords,
-        difficulty: guide.difficulty,
+        difficulty: toDifficulty(guide.difficulty),
         status: guide.status,
-        error: guide.error,
         createdAt: guide.created_at,
         updatedAt: guide.updated_at,
         userId: guide.user_id,
@@ -212,4 +179,6 @@ export class GuideStorage {
       throw new Error('Failed to list guides')
     }
   }
-} 
+}
+
+export type { GuideMetadata } from './types'

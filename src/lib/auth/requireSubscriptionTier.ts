@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
 import { createServerActionSupabaseClient } from '@/lib/supabase/server'
 import { getUserSubscriptionTier } from './getUserSubscriptionTier'
 import { getUserGuideCount } from '@/lib/guide/getUserGuideCount'
@@ -14,8 +13,7 @@ export async function requireSubscriptionTier(
   options: RequireOptions
 ) {
   try {
-    const cookieStore = cookies()
-    const supabase = createServerActionSupabaseClient(cookieStore)
+    const supabase = createServerActionSupabaseClient()
     const {
       data: { session },
     } = await supabase.auth.getSession()
@@ -25,15 +23,12 @@ export async function requireSubscriptionTier(
     const userId = session.user.email || session.user.id
     const tier = await getUserSubscriptionTier(supabase, userId)
     if (options.tier === 'pro' && tier !== 'pro') {
-      return NextResponse.json({ error: 'Upgrade required for this feature.' }, { status: 402 })
+      return NextResponse.json({ error: 'Pro subscription required.' }, { status: 403 })
     }
-    if (options.tier === 'free' && options.quota) {
+    if (options.tier === 'free' && tier === 'free' && options.quota) {
       const count = await getUserGuideCount(supabase, userId)
-      if (count >= options.quota && tier === 'free') {
-        return NextResponse.json(
-          { error: 'Free tier quota exceeded. Upgrade to Pro.' },
-          { status: 402 }
-        )
+      if (count >= options.quota) {
+        return NextResponse.json({ error: 'Free tier quota exceeded.' }, { status: 403 })
       }
     }
     return handler(userId)

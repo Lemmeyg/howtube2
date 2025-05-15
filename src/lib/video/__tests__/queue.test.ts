@@ -10,7 +10,7 @@ describe('ProcessingQueue', () => {
   const mockVideoId = 'test-video-id'
   const mockUserId = 'test-user-id'
   const mockQueueItem: QueueItem = {
-    id: 1,
+    id: 'mock-uuid-1',
     user_id: mockUserId,
     video_id: mockVideoId,
     status: 'pending',
@@ -21,7 +21,7 @@ describe('ProcessingQueue', () => {
   }
 
   const expectedQueueItem = {
-    id: 1,
+    id: 'mock-uuid-1',
     userId: mockUserId,
     videoId: mockVideoId,
     url: undefined,
@@ -69,7 +69,6 @@ describe('ProcessingQueue', () => {
       },
     } as any
     /* eslint-enable @typescript-eslint/no-explicit-any */
-
     ;(createClient as jest.Mock).mockReturnValue(mockSupabase)
     queue = new ProcessingQueue(mockSupabase)
   })
@@ -85,7 +84,7 @@ describe('ProcessingQueue', () => {
       expect(mockQueryBuilder.insert).toHaveBeenCalledWith({
         user_id: mockUserId,
         video_id: mockVideoId,
-        url: 'mock-url',
+        video_url: 'mock-url',
         status: 'pending',
         progress: 0,
       })

@@ -5,9 +5,9 @@ export interface ProcessingStatus {
 }
 
 export interface QueueItem {
-  id: number
-  video_id: string
+  id: string
   user_id: string
+  video_id: string
   status: ProcessingStatus['status']
   progress?: number
   error?: string

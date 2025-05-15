@@ -1,41 +1,32 @@
-import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
-import { createServerClient } from '@/lib/supabase/server'
+import { createServerActionSupabaseClient } from '@/lib/supabase/server'
 import { protectApi } from '@/lib/auth/protect-api'
 import { validateYouTubeUrl, extractYouTubeVideoId } from '@/lib/validation/youtube'
-import { ProcessingQueue } from '@/lib/video/queue'
 import { MetadataExtractor } from '@/lib/video/metadata'
 import { logger } from '@/config/logger'
+import { ProcessingQueue } from '@/lib/video/queue'
 
 export async function POST(request: Request) {
   return protectApi(async () => {
     try {
-      const cookieStore = cookies()
-      const supabase = createServerClient(cookieStore)
+      const supabase = createServerActionSupabaseClient()
       const {
         data: { session },
       } = await supabase.auth.getSession()
-
       if (!session?.user) {
         return new NextResponse(JSON.stringify({ error: 'Unauthorized' }), {
           status: 401,
           headers: { 'Content-Type': 'application/json' },
         })
       }
-
-      // Parse request body
       const body = await request.json()
       const { url } = body
-
-      // Validate YouTube URL
       if (!url || !validateYouTubeUrl(url)) {
         return new NextResponse(JSON.stringify({ error: 'Invalid YouTube URL' }), {
           status: 400,
           headers: { 'Content-Type': 'application/json' },
         })
       }
-
-      // Extract video ID
       const videoId = extractYouTubeVideoId(url)
       if (!videoId) {
         return new NextResponse(JSON.stringify({ error: 'Could not extract video ID' }), {
@@ -43,37 +34,63 @@ export async function POST(request: Request) {
           headers: { 'Content-Type': 'application/json' },
         })
       }
-
-      // Initialize queue and metadata extractor
-      const queue = new ProcessingQueue(supabase)
       const metadataExtractor = new MetadataExtractor(supabase)
-
+      const queue = new ProcessingQueue(supabase)
       // Check if video is already in queue
-      const existingStatus = await queue.getStatus(videoId)
-      if (existingStatus) {
+      const { data: existingData, error: existingError } = await supabase
+        .from('video_processing')
+        .select()
+        .eq('video_id', videoId)
+        .single()
+
+      if ((existingError && existingError.code === 'PGRST116') || !existingData) {
+        // No record found, proceed to insert
+        const metadata = await metadataExtractor.extractMetadata(url)
+        await metadataExtractor.saveMetadata(videoId, metadata)
+        const { data: metadataRow } = await supabase
+          .from('video_metadata')
+          .select()
+          .eq('video_id', videoId)
+          .single()
+        const queueItem = await queue.addToQueue(session.user.id, url, videoId)
         return new NextResponse(
           JSON.stringify({
-            error: 'Video is already being processed',
-            status: existingStatus,
+            message: 'Video added to processing queue',
+            status: queueItem,
+            metadata: metadataRow,
           }),
-          { status: 409, headers: { 'Content-Type': 'application/json' } }
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
         )
       }
 
-      // Extract metadata first
-      const metadata = await metadataExtractor.extractMetadata(url)
-      await metadataExtractor.saveMetadata(videoId, metadata)
+      // If the same user, same video, and status is 'pending', treat as idempotent
+      if (
+        existingData.user_id === session.user.id &&
+        existingData.video_id === videoId &&
+        existingData.status === 'pending'
+      ) {
+        const { data: metadataRow } = await supabase
+          .from('video_metadata')
+          .select()
+          .eq('video_id', videoId)
+          .single()
+        return new NextResponse(
+          JSON.stringify({
+            message: 'Video added to processing queue',
+            status: existingData,
+            metadata: metadataRow,
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        )
+      }
 
-      // Add to processing queue
-      const queueItem = await queue.addToQueue(session.user.id, url, videoId)
-
+      // Otherwise, it's a true duplicate (different user or not pending)
       return new NextResponse(
         JSON.stringify({
-          message: 'Video added to processing queue',
-          status: queueItem,
-          metadata,
+          error: 'Video is already being processed',
+          status: existingData,
         }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } }
+        { status: 409, headers: { 'Content-Type': 'application/json' } }
       )
     } catch (error) {
       logger.error('Error processing video:', error)
@@ -88,47 +105,40 @@ export async function POST(request: Request) {
 export async function GET(request: Request) {
   return protectApi(async () => {
     try {
-      const cookieStore = cookies()
-      const supabase = createServerClient(cookieStore)
+      const supabase = createServerActionSupabaseClient()
       const {
         data: { session },
       } = await supabase.auth.getSession()
-
       if (!session?.user) {
         return new NextResponse(JSON.stringify({ error: 'Unauthorized' }), {
           status: 401,
           headers: { 'Content-Type': 'application/json' },
         })
       }
-
-      // Get video ID from query params
       const { searchParams } = new URL(request.url)
-      const videoId = searchParams.get('videoId')
-
+      const videoId = searchParams.get('videoId') || searchParams.get('id')
       if (!videoId) {
         return new NextResponse(JSON.stringify({ error: 'Video ID is required' }), {
           status: 400,
           headers: { 'Content-Type': 'application/json' },
         })
       }
-
-      // Initialize queue and metadata extractor
-      const queue = new ProcessingQueue(supabase)
-      const metadataExtractor = new MetadataExtractor(supabase)
-
-      // Get status and metadata
-      const [status, metadata] = await Promise.all([
-        queue.getStatus(videoId),
-        metadataExtractor.getMetadata(videoId),
-      ])
-
-      if (!status) {
+      const { data: status, error: statusError } = await supabase
+        .from('video_processing')
+        .select()
+        .eq('video_id', videoId)
+        .single()
+      if ((statusError && statusError.code === 'PGRST116') || !status) {
         return new NextResponse(JSON.stringify({ error: 'Video not found in queue' }), {
           status: 404,
           headers: { 'Content-Type': 'application/json' },
         })
       }
-
+      const { data: metadata } = await supabase
+        .from('video_metadata')
+        .select()
+        .eq('video_id', videoId)
+        .single()
       return new NextResponse(JSON.stringify({ status, metadata }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -146,54 +156,47 @@ export async function GET(request: Request) {
 export async function DELETE(request: Request) {
   return protectApi(async () => {
     try {
-      const cookieStore = cookies()
-      const supabase = createServerClient(cookieStore)
+      const supabase = createServerActionSupabaseClient()
       const {
         data: { session },
       } = await supabase.auth.getSession()
-
       if (!session?.user) {
         return new NextResponse(JSON.stringify({ error: 'Unauthorized' }), {
           status: 401,
           headers: { 'Content-Type': 'application/json' },
         })
       }
-
-      // Get video ID from query params
       const { searchParams } = new URL(request.url)
-      const videoId = searchParams.get('videoId')
-
+      const videoId = searchParams.get('videoId') || searchParams.get('id')
       if (!videoId) {
         return new NextResponse(JSON.stringify({ error: 'Video ID is required' }), {
           status: 400,
           headers: { 'Content-Type': 'application/json' },
         })
       }
-
-      // Initialize queue and metadata extractor
-      const queue = new ProcessingQueue(supabase)
-      const metadataExtractor = new MetadataExtractor(supabase)
-
-      // Get current status to verify ownership
-      const status = await queue.getStatus(videoId)
-      if (!status) {
+      // Check for existence first
+      const { data: status, error: statusError } = await supabase
+        .from('video_processing')
+        .select()
+        .eq('video_id', videoId)
+        .single()
+      if ((statusError && statusError.code === 'PGRST116') || !status) {
         return new NextResponse(JSON.stringify({ error: 'Video not found in queue' }), {
           status: 404,
           headers: { 'Content-Type': 'application/json' },
         })
       }
-
-      // Verify ownership
-      if (status.userId !== session.user.id) {
+      // Then check user
+      if (status.user_id !== session.user.id) {
         return new NextResponse(JSON.stringify({ error: 'Unauthorized' }), {
           status: 403,
           headers: { 'Content-Type': 'application/json' },
         })
       }
-
-      // Remove from queue and delete metadata
-      await Promise.all([queue.removeFromQueue(videoId), metadataExtractor.deleteMetadata(videoId)])
-
+      await Promise.all([
+        supabase.from('video_processing').delete().eq('video_id', videoId),
+        supabase.from('video_metadata').delete().eq('video_id', videoId),
+      ])
       return new NextResponse(JSON.stringify({ message: 'Video removed from queue' }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },

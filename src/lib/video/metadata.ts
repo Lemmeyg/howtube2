@@ -34,6 +34,7 @@ export interface YtDlpMetadata {
 }
 
 export interface DatabaseRecord {
+  id: string
   video_id: string
   title: string
   description: string
@@ -94,48 +95,63 @@ export class MetadataExtractor {
   }
 
   /**
-   * Save metadata to the database
+   * Save metadata to the database (still uses video_id for reference)
    */
   async saveMetadata(videoId: string, metadata: VideoMetadata): Promise<void> {
     try {
-      const { error } = await this.supabase.from('video_metadata').insert({
-        video_id: videoId,
-        title: metadata.title,
-        description: metadata.description,
-        duration: metadata.duration,
-        thumbnail: metadata.thumbnail,
-        formats: metadata.formats,
-        upload_date: metadata.upload_date,
-        uploader: metadata.uploader,
-        uploader_url: metadata.uploader_url,
-        view_count: metadata.view_count,
-        like_count: metadata.like_count,
-        tags: metadata.tags,
-      })
+      const { error } = await this.supabase.from('video_metadata').upsert(
+        {
+          video_id: videoId,
+          title: metadata.title,
+          description: metadata.description,
+          duration: metadata.duration,
+          thumbnail: metadata.thumbnail,
+          formats: metadata.formats,
+          upload_date: metadata.upload_date,
+          uploader: metadata.uploader,
+          uploader_url: metadata.uploader_url,
+          view_count: metadata.view_count,
+          like_count: metadata.like_count,
+          tags: metadata.tags,
+        },
+        { onConflict: 'video_id' }
+      )
 
       if (error) throw error
     } catch (error) {
-      logger.error('Failed to save video metadata:', error)
+      // Improved error logging
+      let message = ''
+      let details = ''
+      let code = ''
+      if (typeof error === 'object' && error !== null) {
+        if ('message' in error && typeof error.message === 'string') message = error.message
+        if ('details' in error && typeof error.details === 'string') details = error.details
+        if ('code' in error && typeof error.code === 'string') code = error.code
+      }
+      console.error('Failed to save video metadata:', error, message, details, code)
+      logger.error(
+        'Failed to save video metadata:',
+        JSON.stringify(error, Object.getOwnPropertyNames(error))
+      )
       throw new Error('Failed to save video metadata')
     }
   }
 
   /**
-   * Get metadata for a video
+   * Get metadata for a video by video_id (UUID)
    */
-  async getMetadata(videoId: string): Promise<VideoMetadata | null> {
+  async getMetadataById(videoId: string): Promise<VideoMetadata | null> {
     try {
+      // Get metadata by video_id
       const { data, error } = await this.supabase
         .from('video_metadata')
         .select()
         .eq('video_id', videoId)
         .single()
-
       if (error) {
         if (error.code === 'PGRST116') return null // Record not found
         throw error
       }
-
       return data ? this.mapDatabaseRecord(data) : null
     } catch (error) {
       logger.error('Failed to get video metadata:', error)
@@ -144,12 +160,11 @@ export class MetadataExtractor {
   }
 
   /**
-   * Delete metadata for a video
+   * Delete metadata for a video by video_id (UUID)
    */
-  async deleteMetadata(videoId: string): Promise<void> {
+  async deleteMetadataById(videoId: string): Promise<void> {
     try {
       const { error } = await this.supabase.from('video_metadata').delete().eq('video_id', videoId)
-
       if (error) throw error
     } catch (error) {
       logger.error('Failed to delete video metadata:', error)
@@ -167,7 +182,7 @@ export class MetadataExtractor {
       description: metadata.description,
       duration: metadata.duration,
       thumbnail: metadata.thumbnail,
-      formats: metadata.formats.map((format) => this.mapFormat(format)),
+      formats: metadata.formats.map(format => this.mapFormat(format)),
       upload_date: metadata.upload_date,
       uploader: metadata.uploader,
       uploader_url: metadata.uploader_url,
@@ -182,7 +197,7 @@ export class MetadataExtractor {
    */
   private mapDatabaseRecord(record: DatabaseRecord): VideoMetadata {
     return {
-      id: record.video_id,
+      id: record.id, // Use UUID as the identifier
       title: record.title,
       description: record.description,
       duration: record.duration,
@@ -193,7 +208,7 @@ export class MetadataExtractor {
       uploader_url: record.uploader_url,
       view_count: record.view_count,
       like_count: record.like_count,
-      tags: record.tags
+      tags: record.tags,
     }
   }
 }

@@ -20,7 +20,7 @@ jest.mock('next/server', () => ({
 
 jest.mock('@/lib/supabase/server')
 
-import { createServerClient } from '@/lib/supabase/server'
+import { createServerActionSupabaseClient } from '@/lib/supabase/server'
 import { AssemblyAI } from '@/lib/transcription/assemblyai'
 import { extractAudio } from '@/lib/transcription/audio'
 import { VideoStorage } from '@/lib/video/storage'
@@ -31,7 +31,13 @@ import { apiConfig } from '@/config/api'
 
 // Mock dependencies
 jest.mock('@supabase/auth-helpers-nextjs')
-jest.mock('next/headers')
+jest.mock('next/headers', () => ({
+  cookies: jest.fn(() => ({
+    get: jest.fn(),
+    set: jest.fn(),
+    getAll: jest.fn(() => []), // Add getAll for compatibility with protectApi
+  })),
+}))
 jest.mock('@/lib/transcription/assemblyai')
 jest.mock('@/lib/transcription/audio')
 jest.mock('@/lib/video/storage')
@@ -99,7 +105,7 @@ describe('Transcription API Route', () => {
 
   beforeEach(() => {
     jest.clearAllMocks()
-    ;(createServerClient as jest.Mock).mockReturnValue(mockSupabase)
+    ;(createServerActionSupabaseClient as jest.Mock).mockReturnValue(mockSupabase)
     ;(extractAudio as jest.Mock).mockResolvedValue(mockAudioPath)
     ;(AssemblyAI as jest.Mock).mockImplementation(() => ({
       submitTranscription: jest.fn().mockResolvedValue('test-transcription-id'),
@@ -186,7 +192,20 @@ describe('Transcription API Route', () => {
         body: JSON.stringify({ videoId: mockVideoId }),
       })
 
-      const response = await POST(request)
+      let response
+      let error
+      try {
+        response = await POST(request)
+      } catch (err) {
+        error = err
+      }
+      console.log('Test debug: response', response)
+      console.log('Test debug: error', error)
+      expect(response).toBeDefined()
+      if (!response) {
+        fail('Handler did not return a response. Error: ' + error)
+        return
+      }
       expect(response).toHaveProperty('json')
       expect(getResponseStatus(response)).toBe(500)
 
@@ -238,7 +257,20 @@ describe('Transcription API Route', () => {
         body: JSON.stringify({ videoId: mockVideoId }),
       })
 
-      const response = await POST(request)
+      let response
+      let error
+      try {
+        response = await POST(request)
+      } catch (err) {
+        error = err
+      }
+      console.log('Test debug: response', response)
+      console.log('Test debug: error', error)
+      expect(response).toBeDefined()
+      if (!response) {
+        fail('Handler did not return a response. Error: ' + error)
+        return
+      }
       expect(response).toHaveProperty('json')
       expect(getResponseStatus(response)).toBe(500)
       const data = await response.json()

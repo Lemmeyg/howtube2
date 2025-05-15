@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
-import { createServerClient } from '@/lib/supabase/server'
+import { createServerActionSupabaseClient } from '@/lib/supabase/server'
 import { getUserSubscriptionTier } from './getUserSubscriptionTier'
 import { getUserGuideCount } from '@/lib/guide/getUserGuideCount'
 
@@ -15,7 +15,7 @@ export async function requireSubscriptionTier(
 ) {
   try {
     const cookieStore = cookies()
-    const supabase = createServerClient(cookieStore)
+    const supabase = createServerActionSupabaseClient(cookieStore)
     const {
       data: { session },
     } = await supabase.auth.getSession()

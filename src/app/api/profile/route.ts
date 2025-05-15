@@ -1,12 +1,12 @@
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
-import { createServerClient } from '@/lib/supabase/server'
+import { createServerActionSupabaseClient } from '@/lib/supabase/server'
 import { protectApi } from '@/lib/auth/protect-api'
 
 export async function GET() {
   return protectApi(async () => {
     const cookieStore = cookies()
-    const supabase = createServerClient(cookieStore)
+    const supabase = createServerActionSupabaseClient(cookieStore)
     const {
       data: { session },
     } = await supabase.auth.getSession()
@@ -28,7 +28,7 @@ export async function GET() {
 export async function PUT(request: Request) {
   return protectApi(async () => {
     const cookieStore = cookies()
-    const supabase = createServerClient(cookieStore)
+    const supabase = createServerActionSupabaseClient(cookieStore)
     const {
       data: { session },
     } = await supabase.auth.getSession()

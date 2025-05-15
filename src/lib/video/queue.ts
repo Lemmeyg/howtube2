@@ -47,7 +47,7 @@ export class ProcessingQueue {
         .insert({
           user_id: userId,
           video_id: videoId,
-          url: url,
+          video_url: url,
           status: 'pending',
           progress: 0,
         })
@@ -58,13 +58,26 @@ export class ProcessingQueue {
 
       return this.mapDatabaseRecord(data)
     } catch (error) {
-      logger.error('Failed to add video to queue:', error)
+      // Improved error logging
+      let message = ''
+      let details = ''
+      let code = ''
+      if (typeof error === 'object' && error !== null) {
+        if ('message' in error && typeof error.message === 'string') message = error.message
+        if ('details' in error && typeof error.details === 'string') details = error.details
+        if ('code' in error && typeof error.code === 'string') code = error.code
+      }
+      console.error('Failed to add video to queue:', error, message, details, code)
+      logger.error(
+        'Failed to add video to queue:',
+        JSON.stringify(error, Object.getOwnPropertyNames(error))
+      )
       throw new Error('Failed to add video to queue')
     }
   }
 
   /**
-   * Get the status of a video in the queue
+   * Get the status of a video in the queue by id (UUID)
    */
   async getStatus(videoId: string): Promise<QueueItem | null> {
     try {
@@ -87,7 +100,7 @@ export class ProcessingQueue {
   }
 
   /**
-   * Update the status and progress of a video in the queue
+   * Update the status and progress of a video in the queue by id (UUID)
    */
   async updateStatus(
     videoId: string,
@@ -114,10 +127,18 @@ export class ProcessingQueue {
   }
 
   /**
-   * Remove a video from the queue
+   * Remove a video from the queue by id (UUID)
    */
   async removeFromQueue(videoId: string): Promise<void> {
     try {
+      // Get the video_id for cleanup
+      const { data, error: fetchError } = await this.supabase
+        .from('video_processing')
+        .select('video_id')
+        .eq('video_id', videoId)
+        .single()
+      if (fetchError || !data) throw fetchError || new Error('Video not found')
+
       const { error } = await this.supabase
         .from('video_processing')
         .delete()
@@ -126,7 +147,7 @@ export class ProcessingQueue {
       if (error) throw error
 
       // Also clean up any temporary files
-      await VideoStorage.deleteVideo(videoId)
+      await VideoStorage.deleteVideo(data.video_id)
     } catch (error) {
       logger.error('Failed to remove video from queue:', error)
       throw new Error('Failed to remove video from queue')
@@ -166,7 +187,7 @@ export class ProcessingQueue {
         .delete()
         .lt('created_at', cutoffDate.toISOString())
         .in('status', ['downloaded', 'failed'])
-        .select('video_id')
+        .select('id, video_id')
 
       if (error) throw error
 

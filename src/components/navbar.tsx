@@ -35,9 +35,6 @@ export function Navbar() {
                 <Button variant="ghost" asChild>
                   <Link href="/guides">Guide Library</Link>
                 </Button>
-                <Button variant="ghost" asChild>
-                  <Link href="/create">Create Guide</Link>
-                </Button>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="icon" aria-label="Open user menu">
@@ -95,7 +92,6 @@ export function Navbar() {
                     {user ? (
                       <>
                         <Link href="/dashboard" className="py-2 px-3 rounded hover:bg-accent" onClick={() => setDrawerOpen(false)}>Dashboard</Link>
-                        <Link href="/create" className="py-2 px-3 rounded hover:bg-accent" onClick={() => setDrawerOpen(false)}>Create Guide</Link>
                         <Link href="/profile" className="py-2 px-3 rounded hover:bg-accent" onClick={() => setDrawerOpen(false)}>Profile</Link>
                         <Link href="/guides" className="py-2 px-3 rounded hover:bg-accent" onClick={() => setDrawerOpen(false)}>My Guides</Link>
                         <button className="py-2 px-3 rounded hover:bg-accent text-left" onClick={() => { signOut(); setDrawerOpen(false) }}>Sign Out</button>

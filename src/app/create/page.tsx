@@ -9,67 +9,150 @@ import { useRouter } from 'next/navigation'
 
 function GuideEditorLoader({ url }: { url: string }) {
   const { state, dispatch } = useGuide()
+  const { user } = useAuth()
   const [status, setStatus] = useState<
     'init' | 'processing' | 'transcribing' | 'generating' | 'ready' | 'error'
   >('init')
   const [error, setError] = useState<string | null>(null)
+  const [pipelineInitiated, setPipelineInitiated] = useState(false)
 
   useEffect(() => {
-    let videoId: string | null = null
     let polling: NodeJS.Timeout
+    let attempts = 0
+    const MAX_ATTEMPTS = 20
 
     async function startPipeline() {
-      setStatus('processing')
-      setError(null)
-      // 1. Start processing
-      const res = await fetch('/api/videos/process', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        setError(data.error || 'Failed to start processing')
+      if (!user) {
+        setError('User not authenticated')
         setStatus('error')
         return
       }
-      videoId = data.status.videoId || data.status.video_id
-      // 2. Poll for processing/transcription status
-      setStatus('transcribing')
-      polling = setInterval(async () => {
-        const statusRes = await fetch(`/api/videos/process?videoId=${videoId}`)
-        const statusData = await statusRes.json()
-        if (statusData.status && statusData.status.status === 'completed') {
-          clearInterval(polling)
-          // 3. Generate guide
-          setStatus('generating')
-          const guideRes = await fetch('/api/videos/guide', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ videoId }),
-          })
-          const guideData = await guideRes.json()
-          if (!guideRes.ok) {
-            setError(guideData.error || 'Failed to generate guide')
+      setStatus('processing')
+      setError(null)
+      try {
+        const res = await fetch('/api/videos/process', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url }),
+          credentials: 'include',
+        })
+        const data = await res.json()
+        if (!res.ok) {
+          setError(data.error || 'Failed to start processing')
+          setStatus('error')
+          return
+        }
+        const id = data.id || data.status?.id
+        setStatus('transcribing')
+        polling = setInterval(async () => {
+          attempts++
+          if (attempts > MAX_ATTEMPTS) {
+            clearInterval(polling)
+            setError('Processing timed out. Please try again later.')
             setStatus('error')
             return
           }
-          // 4. Load guide into context
-          dispatch({ type: 'LOAD_GUIDE', payload: guideData })
-          setStatus('ready')
-        } else if (statusData.status && statusData.status.status === 'error') {
-          clearInterval(polling)
-          setError('Video processing failed.')
-          setStatus('error')
-        }
-      }, 3000)
+          try {
+            const statusRes = await fetch(`/api/videos/process?id=${id}`, {
+              credentials: 'include',
+            })
+            const statusData = await statusRes.json()
+            if (!statusRes.ok) {
+              clearInterval(polling)
+              setError(statusData.error || 'Failed to check video status')
+              setStatus('error')
+              return
+            }
+            if (statusData.status && 
+                (statusData.status.status === 'completed' || 
+                 (statusData.status.status === 'transcribing' && statusData.status.transcription_job_id) || 
+                 (statusData.status.current_step === 'pipeline_complete'))
+            ) {
+              if (statusData.status.transcription_job_id || (statusData.metadata && statusData.metadata.transcription_id)) {
+                const transcriptionId = statusData.status.transcription_job_id || statusData.metadata.transcription_id;
+                console.log('Polling transcription status for job ID:', transcriptionId);
+                const transStatusRes = await fetch(`/api/videos/transcribe?id=${id}&transcriptionId=${transcriptionId}`, {
+                    credentials: 'include',
+                });
+                const transStatusData = await transStatusRes.json();
+                console.log('Transcription status response data:', transStatusData);
+
+                if (!transStatusRes.ok) {
+                    console.warn('Failed to get specific transcription status:', transStatusData.error)
+                } else {
+                    if (transStatusData.status === 'completed') {
+                        clearInterval(polling)
+                        setStatus('generating')
+                        console.log('Making guide request for videoId:', id)
+                        const guideRes = await fetch('/api/videos/guide', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ id }),
+                            credentials: 'include',
+                        })
+                        const guideData = await guideRes.json()
+                        if (!guideRes.ok) {
+                            setError(guideData.error || 'Failed to generate guide')
+                            setStatus('error')
+                            return
+                        }
+                        dispatch({ type: 'LOAD_GUIDE', payload: guideData })
+                        setStatus('ready')
+                        return
+                    } else if (transStatusData.status === 'error') {
+                        clearInterval(polling)
+                        setError(transStatusData.error || 'Transcription failed in AssemblyAI')
+                        setStatus('error')
+                        return
+                    } 
+                }
+              } else if (statusData.status.status === 'completed') {
+                console.warn("video_processing is 'completed' but no transcription ID found. Proceeding to guide generation if applicable or this might be an error.");
+                clearInterval(polling)
+                setStatus('generating')
+                const guideRes = await fetch('/api/videos/guide', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id }),
+                    credentials: 'include',
+                })
+                const guideData = await guideRes.json()
+                if (!guideRes.ok) {
+                    setError(guideData.error || 'Failed to generate guide (after completion without transcription ID)')
+                    setStatus('error')
+                    return
+                }
+                dispatch({ type: 'LOAD_GUIDE', payload: guideData })
+                setStatus('ready')
+                return
+              }
+            } else if (statusData.status && statusData.status.status === 'error') {
+              clearInterval(polling)
+              setError(statusData.status.error || 'Video processing failed in the queue.')
+              setStatus('error')
+            }
+          } catch (error) {
+            console.error('Error polling status:', error)
+            clearInterval(polling)
+            setError('Error checking video status')
+            setStatus('error')
+          }
+        }, 3000)
+      } catch (error) {
+        console.error('Error in pipeline initiation:', error)
+        setError('Failed to start processing pipeline')
+        setStatus('error')
+      }
     }
 
-    startPipeline()
+    if (url && user && !pipelineInitiated) {
+      setPipelineInitiated(true)
+      startPipeline()
+    }
     return () => {
       if (polling) clearInterval(polling)
     }
-  }, [url, dispatch])
+  }, [url, dispatch, user, pipelineInitiated])
 
   if (status === 'processing') return <div>Processing video...</div>
   if (status === 'transcribing') return <div>Transcribing audio...</div>

@@ -18,7 +18,7 @@ jest.mock('next/server', () => ({
   NextResponse: MockNextResponse,
 }))
 
-import { createServerClient } from '@/lib/supabase/server'
+import { createServerActionSupabaseClient } from '@/lib/supabase/server'
 import { GuideGenerator, Guide } from '@/lib/guide/openai'
 import { GuideStorage, GuideMetadata } from '@/lib/guide/storage'
 import { POST, GET, DELETE } from '../route'
@@ -30,6 +30,7 @@ jest.mock('next/headers', () => ({
   cookies: jest.fn(() => ({
     get: jest.fn(),
     set: jest.fn(),
+    getAll: jest.fn(() => []),
   })),
 }))
 
@@ -99,8 +100,11 @@ describe('Guide API Route', () => {
       getSession: jest.fn().mockResolvedValue({
         data: { session: { user: { id: mockUserId } } },
       }),
+      getUser: jest.fn().mockResolvedValue({
+        data: { user: { id: mockUserId } },
+      }),
     }
-    ;(createServerClient as jest.Mock).mockReturnValue(mockSupabase)
+    ;(createServerActionSupabaseClient as jest.Mock).mockReturnValue(mockSupabase)
     ;(GuideGenerator.prototype.generateGuide as jest.Mock).mockResolvedValue(mockGuide)
     ;(GuideStorage.prototype.createGuide as jest.Mock).mockResolvedValue(mockGuideMetadata)
     ;(GuideStorage.prototype.getGuideMetadata as jest.Mock).mockResolvedValue(mockGuideMetadata)
@@ -163,13 +167,26 @@ describe('Guide API Route', () => {
     })
 
     it('should handle missing transcription', async () => {
-      const mockQueryBuilder = Object.assign({}, createMockQueryBuilder(), {
+      // Mock video_processing to return a valid record
+      const mockProcessingQueryBuilder = Object.assign({}, createMockQueryBuilder(), {
+        single: jest.fn().mockResolvedValue({
+          data: { video_id: mockVideoId },
+          error: null,
+        }),
+      }) as Record<string, unknown>
+      // Mock video_transcriptions to return null data
+      const mockTranscriptionQueryBuilder = Object.assign({}, createMockQueryBuilder(), {
         single: jest.fn().mockResolvedValue({
           data: null,
           error: null,
         }),
       }) as Record<string, unknown>
-      mockSupabase.from = jest.fn(() => mockQueryBuilder)
+      // Mock from to return the correct builder based on table
+      mockSupabase.from = jest.fn((table: string) => {
+        if (table === 'video_processing') return mockProcessingQueryBuilder
+        if (table === 'video_transcriptions') return mockTranscriptionQueryBuilder
+        return createMockQueryBuilder()
+      })
 
       const request = new Request('http://localhost/api/videos/guide', {
         method: 'POST',

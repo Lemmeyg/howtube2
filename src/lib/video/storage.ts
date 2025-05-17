@@ -2,6 +2,8 @@ import fs from 'fs/promises'
 import path from 'path'
 import os from 'os'
 import { logger } from '@/config/logger'
+import http from 'http'
+import { createServer } from 'http'
 
 export class StorageError extends Error {
   constructor(
@@ -18,14 +20,52 @@ export class StorageError extends Error {
 export class VideoStorage {
   private static readonly storageDir = path.join(os.tmpdir(), 'howtube-videos')
   private static readonly audioDir = path.join(os.tmpdir(), 'howtube-audio')
+  private static server: http.Server | null = null
+  private static serverPort = 3001
+  private static serverUrl = `http://localhost:${VideoStorage.serverPort}`
 
   /**
-   * Initialize storage directory
+   * Initialize storage directory and HTTP server
    */
   static async initialize(): Promise<void> {
     try {
       await fs.mkdir(this.storageDir, { recursive: true })
       await fs.mkdir(this.audioDir, { recursive: true })
+
+      // Start HTTP server if not already running
+      if (!this.server) {
+        this.server = createServer(async (req, res) => {
+          try {
+            const url = new URL(req.url || '', this.serverUrl)
+            const filePath = path.join(this.audioDir, path.basename(url.pathname))
+
+            // Check if file exists
+            try {
+              await fs.access(filePath)
+            } catch {
+              res.writeHead(404)
+              res.end('File not found')
+              return
+            }
+
+            // Set CORS headers
+            res.setHeader('Access-Control-Allow-Origin', '*')
+            res.setHeader('Access-Control-Allow-Methods', 'GET')
+            res.setHeader('Content-Type', 'audio/mpeg')
+
+            // Stream the file
+            const fileStream = fs.createReadStream(filePath)
+            fileStream.pipe(res)
+          } catch (error) {
+            logger.error('Error serving file:', error)
+            res.writeHead(500)
+            res.end('Internal server error')
+          }
+        })
+
+        this.server.listen(this.serverPort)
+        logger.info(`[Storage] Started HTTP server on port ${this.serverPort}`)
+      }
     } catch (err) {
       logger.error('Failed to initialize video storage:', err)
       throw new StorageError(
@@ -158,8 +198,11 @@ export class VideoStorage {
   static async uploadAudio(videoId: string, audioPath: string): Promise<string> {
     try {
       const targetPath = this.getAudioPath(videoId)
+      // Ensure the audio directory exists
+      await fs.mkdir(this.audioDir, { recursive: true })
       await fs.copyFile(audioPath, targetPath)
-      return targetPath
+      // Return a URL that AssemblyAI can access
+      return `${this.serverUrl}/${videoId}.mp3`
     } catch (err) {
       logger.error('Failed to upload audio:', err)
       throw new StorageError('Failed to upload audio', err instanceof Error ? err : undefined)
@@ -179,6 +222,25 @@ export class VideoStorage {
       }
       logger.error('Failed to delete audio:', err)
       throw new StorageError('Failed to delete audio', err instanceof Error ? err : undefined)
+    }
+  }
+
+  /**
+   * Shutdown the HTTP server
+   */
+  static async shutdown(): Promise<void> {
+    if (this.server) {
+      await new Promise<void>((resolve, reject) => {
+        this.server!.close(err => {
+          if (err) {
+            reject(err)
+          } else {
+            resolve()
+          }
+        })
+      })
+      this.server = null
+      logger.info('[Storage] HTTP server stopped')
     }
   }
 }

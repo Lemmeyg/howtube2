@@ -1,103 +1,99 @@
 import { NextResponse } from 'next/server'
 import { createServerActionSupabaseClient } from '@/lib/supabase/server'
-import { protectApi } from '@/lib/auth/protect-api'
-import { validateYouTubeUrl, extractYouTubeVideoId } from '@/lib/validation/youtube'
-import { MetadataExtractor } from '@/lib/video/metadata'
 import { logger } from '@/config/logger'
-import { ProcessingQueue } from '@/lib/video/queue'
+import { protectApi } from '@/lib/auth/protect-api'
 
 export async function POST(request: Request) {
   return protectApi(async () => {
     try {
       const supabase = createServerActionSupabaseClient()
+
       const {
         data: { session },
       } = await supabase.auth.getSession()
+
       if (!session?.user) {
-        return new NextResponse(JSON.stringify({ error: 'Unauthorized' }), {
-          status: 401,
-          headers: { 'Content-Type': 'application/json' },
-        })
+        logger.warn('[Video Submission] Unauthorized request - no user session')
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
       }
+
+      // Parse request body
       const body = await request.json()
-      const { url } = body
-      if (!url || !validateYouTubeUrl(url)) {
-        return new NextResponse(JSON.stringify({ error: 'Invalid YouTube URL' }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' },
-        })
-      }
-      const videoId = extractYouTubeVideoId(url)
+      logger.info('[Video Submission] Request body:', body)
+      const videoId = body.videoId
+
       if (!videoId) {
-        return new NextResponse(JSON.stringify({ error: 'Could not extract video ID' }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' },
-        })
+        logger.warn('[Video Submission] Missing video ID in request')
+        return NextResponse.json({ error: 'Video ID is required' }, { status: 400 })
       }
-      const metadataExtractor = new MetadataExtractor(supabase)
-      const queue = new ProcessingQueue(supabase)
+
       // Check if video is already in queue
-      const { data: existingData, error: existingError } = await supabase
+      const { data: existing } = await supabase
         .from('video_processing')
-        .select()
+        .select('id')
         .eq('video_id', videoId)
         .single()
 
-      if ((existingError && existingError.code === 'PGRST116') || !existingData) {
-        // No record found, proceed to insert
-        const metadata = await metadataExtractor.extractMetadata(url)
-        await metadataExtractor.saveMetadata(videoId, metadata)
-        const { data: metadataRow } = await supabase
-          .from('video_metadata')
-          .select()
-          .eq('video_id', videoId)
-          .single()
-        const queueItem = await queue.addToQueue(session.user.id, url, videoId)
-        return new NextResponse(
-          JSON.stringify({
-            message: 'Video added to processing queue',
-            status: queueItem,
-            metadata: metadataRow,
-          }),
-          { status: 200, headers: { 'Content-Type': 'application/json' } }
-        )
+      if (existing) {
+        logger.info(`[Video Submission] Video already in queue with ID: ${existing.id}`)
+        return NextResponse.json({
+          message: 'Video already in queue',
+          id: existing.id,
+        })
       }
 
-      // If the same user, same video, and status is 'pending', treat as idempotent
-      if (
-        existingData.user_id === session.user.id &&
-        existingData.video_id === videoId &&
-        existingData.status === 'pending'
-      ) {
-        const { data: metadataRow } = await supabase
-          .from('video_metadata')
-          .select()
-          .eq('video_id', videoId)
-          .single()
-        return new NextResponse(
-          JSON.stringify({
-            message: 'Video added to processing queue',
-            status: existingData,
-            metadata: metadataRow,
-          }),
-          { status: 200, headers: { 'Content-Type': 'application/json' } }
-        )
+      // Create new processing entry
+      const { data: processing, error: processingError } = await supabase
+        .from('video_processing')
+        .insert({
+          video_id: videoId,
+          video_url: body.url,
+          user_id: session.user.id,
+          status: 'pending',
+        })
+        .select()
+        .single()
+
+      if (processingError || !processing) {
+        logger.error('[Video Submission] Failed to create processing entry:', processingError)
+        return NextResponse.json({ error: 'Failed to queue video' }, { status: 500 })
       }
 
-      // Otherwise, it's a true duplicate (different user or not pending)
-      return new NextResponse(
-        JSON.stringify({
-          error: 'Video is already being processed',
-          status: existingData,
-        }),
-        { status: 409, headers: { 'Content-Type': 'application/json' } }
-      )
-    } catch (error) {
-      logger.error('Error processing video:', error)
-      return new NextResponse(JSON.stringify({ error: 'Failed to process video' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
+      logger.info(`[Video Submission] Video queued successfully with ID: ${processing.id}`)
+
+      // Trigger worker
+      try {
+        logger.info(
+          `[Video Submission] Attempting to trigger worker at http://localhost:3000/api/videos/worker for video ${videoId}`
+        )
+        const response = await fetch('http://localhost:3000/api/videos/worker', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            videoId,
+            processingId: processing.id,
+          }),
+        })
+
+        if (!response.ok) {
+          const error = await response.json()
+          logger.error('[Video Submission] Worker trigger failed:', error)
+          return NextResponse.json({ error: 'Failed to start processing' }, { status: 500 })
+        }
+      } catch (error) {
+        logger.error('[Video Submission] Worker trigger failed:', error)
+        return NextResponse.json({ error: 'Failed to start processing' }, { status: 500 })
+      }
+
+      return NextResponse.json({
+        message: 'Video queued for processing',
+        id: processing.id,
       })
+    } catch (error) {
+      logger.error('[Video Submission] Error processing request:', error)
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
   })
 }

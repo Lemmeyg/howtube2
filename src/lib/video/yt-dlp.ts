@@ -3,6 +3,8 @@ import path from 'path'
 import { logger } from '@/config/logger'
 import { extractYouTubeVideoId } from '../validation/youtube'
 import { YtDlpMetadata } from './metadata'
+import fs from 'fs/promises'
+import { tmpdir } from 'os'
 
 interface DownloadProgress {
   percentage: number
@@ -12,15 +14,31 @@ interface DownloadProgress {
 }
 
 export class YtDlpError extends Error {
-  constructor(message: string, public readonly cause?: Error) {
+  constructor(
+    message: string,
+    public readonly cause?: Error
+  ) {
     super(message)
     this.name = 'YtDlpError'
   }
 }
 
 export class YtDlp {
-  private static readonly DEFAULT_FORMAT = 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
-  private static readonly DOWNLOAD_DIR = path.join(process.cwd(), 'videos')
+  private static readonly DEFAULT_FORMAT =
+    'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
+  private static readonly DOWNLOAD_DIR = path.join(tmpdir(), 'howtube', 'videos')
+
+  /**
+   * Ensures the download directory exists
+   */
+  private async ensureDownloadDir(): Promise<void> {
+    try {
+      await fs.mkdir(YtDlp.DOWNLOAD_DIR, { recursive: true })
+    } catch (error) {
+      logger.error('Failed to create download directory:', error)
+      throw new YtDlpError('Failed to create download directory', error as Error)
+    }
+  }
 
   /**
    * Downloads a YouTube video
@@ -38,16 +56,13 @@ export class YtDlp {
       throw new YtDlpError('Invalid YouTube URL')
     }
 
-    const outputPath = options.outputPath || path.join(YtDlp.DOWNLOAD_DIR, videoId)
-    const args = [
-      url,
-      '-f',
-      YtDlp.DEFAULT_FORMAT,
-      '-o',
-      outputPath,
-      '--no-playlist',
-      '--progress',
-    ]
+    // Ensure download directory exists
+    await this.ensureDownloadDir()
+
+    const outputPath = options.outputPath || path.join(YtDlp.DOWNLOAD_DIR, `${videoId}.mp4`)
+    logger.info(`[YtDlp] Downloading video to ${outputPath}`)
+
+    const args = [url, '-f', YtDlp.DEFAULT_FORMAT, '-o', outputPath, '--no-playlist', '--progress']
 
     const ytDlp = spawn('yt-dlp', args)
 
@@ -62,7 +77,7 @@ export class YtDlp {
         }, options.timeout)
       }
 
-      ytDlp.stdout.on('data', (data) => {
+      ytDlp.stdout.on('data', data => {
         if (options.onProgress) {
           const progress = this.parseProgress(data.toString())
           if (progress) {
@@ -71,22 +86,30 @@ export class YtDlp {
         }
       })
 
-      ytDlp.stderr.on('data', (data) => {
+      ytDlp.stderr.on('data', data => {
         stderr += data.toString()
+        logger.debug(`[YtDlp] stderr: ${data}`)
       })
 
-      ytDlp.on('close', (code) => {
+      ytDlp.on('close', async code => {
         if (timeoutId) {
           clearTimeout(timeoutId)
         }
         if (code === 0) {
-          resolve(outputPath)
+          // Verify the file exists
+          try {
+            await fs.access(outputPath)
+            logger.info(`[YtDlp] Download complete: ${outputPath}`)
+            resolve(outputPath)
+          } catch (error) {
+            reject(new YtDlpError(`Downloaded file not found at ${outputPath}`, error as Error))
+          }
         } else {
           reject(new YtDlpError(`yt-dlp process exited with code ${code}: ${stderr}`))
         }
       })
 
-      ytDlp.on('error', (error) => {
+      ytDlp.on('error', error => {
         if (timeoutId) {
           clearTimeout(timeoutId)
         }
@@ -111,15 +134,15 @@ export class YtDlp {
       let stdout = ''
       let stderr = ''
 
-      ytDlp.stdout.on('data', (data) => {
+      ytDlp.stdout.on('data', data => {
         stdout += data.toString()
       })
 
-      ytDlp.stderr.on('data', (data) => {
+      ytDlp.stderr.on('data', data => {
         stderr += data.toString()
       })
 
-      ytDlp.on('close', (code) => {
+      ytDlp.on('close', code => {
         if (code === 0) {
           try {
             const metadata = JSON.parse(stdout)
@@ -135,7 +158,7 @@ export class YtDlp {
         }
       })
 
-      ytDlp.on('error', (error) => {
+      ytDlp.on('error', error => {
         reject(new YtDlpError('Failed to spawn yt-dlp', error))
       })
     })

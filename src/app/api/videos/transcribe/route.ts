@@ -3,73 +3,62 @@ import { NextResponse } from 'next/server'
 import { createServerActionSupabaseClient } from '@/lib/supabase/server'
 import { protectApi } from '@/lib/auth/protect-api'
 import { AssemblyAI } from '@/lib/transcription/assemblyai'
-import { extractAudio } from '@/lib/transcription/audio'
-import { VideoStorage } from '@/lib/video/storage'
 import { logger } from '@/config/logger'
 import { apiConfig } from '@/config/api'
 
 export async function POST(request: Request) {
-  // throw new Error('FORCED ERROR: POST handler reached');
   return protectApi(async () => {
     try {
-      console.log('POST handler: start')
+      logger.info('[Transcribe] Starting transcription request')
       const supabase = createServerActionSupabaseClient()
-      console.log('POST handler: got supabase')
+
       const {
         data: { session },
       } = await supabase.auth.getSession()
-      console.log('POST handler: got session', session)
 
       if (!session?.user) {
-        console.log('POST handler: no user in session')
+        logger.warn('[Transcribe] Unauthorized request - no user session')
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
       }
 
       // Parse request body
       const body = await request.json()
-      console.log('POST handler: got body', body)
+      logger.info('[Transcribe] Request body:', body)
       const id = body.id || body.videoId
 
       if (!id) {
+        logger.warn('[Transcribe] Missing video ID in request')
         return NextResponse.json({ error: 'Video ID is required' }, { status: 400 })
       }
 
-      // Look up the video_processing record to get video_id
+      // Look up the video_processing record to get video_id and video_url
       const { data: processing, error: procError } = await supabase
         .from('video_processing')
-        .select('video_id')
+        .select('video_id, video_url')
         .eq('id', id)
         .single()
+
       if (procError || !processing) {
+        logger.error('[Transcribe] Failed to fetch video processing record:', procError)
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
       }
-      // const videoId = processing.video_id // used for audio extraction and upload, but not returned
-
-      // Extract audio from video
-      const outputPath = `/tmp/${processing.video_id}.mp3`
-      await extractAudio(processing.video_id, outputPath)
-      console.log('POST handler: extracted audio')
-
-      // Upload audio to temporary storage for AssemblyAI
-      const audioUrl = await VideoStorage.uploadAudio(processing.video_id, outputPath)
-      console.log('POST handler: uploaded audio', audioUrl)
 
       // Initialize AssemblyAI client
       if (!apiConfig.assemblyAI.apiKey) {
-        console.log('POST handler: missing AssemblyAI apiKey')
+        logger.error('[Transcribe] Missing AssemblyAI API key')
         throw new Error('AssemblyAI API key is not configured')
       }
       const assemblyAI = new AssemblyAI(apiConfig.assemblyAI.apiKey)
-      console.log('POST handler: created AssemblyAI client')
 
-      // Submit transcription
-      const transcriptionId = await assemblyAI.submitTranscription(audioUrl, {
+      // Submit transcription with YouTube URL
+      logger.info(`[Transcribe] Submitting YouTube URL for transcription: ${processing.video_url}`)
+      const transcriptionId = await assemblyAI.submitTranscription(processing.video_url, {
         language_code: 'en',
         punctuate: true,
         format_text: true,
         speaker_labels: true,
       })
-      console.log('POST handler: submitted transcription', transcriptionId)
+      logger.info(`[Transcribe] Transcription submitted, job ID: ${transcriptionId}`)
 
       // Store transcription ID in database
       const { error: dbError } = await supabase.from('video_transcriptions').insert({
@@ -79,21 +68,19 @@ export async function POST(request: Request) {
         status: 'processing',
         user_id: session.user.id,
       })
-      console.log('POST handler: inserted transcription row', dbError)
 
-      if (dbError) throw dbError
+      if (dbError) {
+        logger.error('[Transcribe] Failed to save transcription record:', dbError)
+        throw dbError
+      }
 
-      // Clean up temporary audio file
-      await VideoStorage.deleteAudio(processing.video_id)
-      console.log('POST handler: deleted audio')
-
+      logger.info('[Transcribe] Transcription process started successfully')
       return NextResponse.json({
         message: 'Transcription started',
         transcriptionId,
       })
     } catch (error) {
-      console.log('POST handler error:', error)
-      logger.error('Error transcribing video:', error)
+      logger.error('[Transcribe] Error processing request:', error)
       return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
   })

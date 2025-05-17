@@ -1,4 +1,6 @@
 import { logger } from '@/config/logger'
+import fs from 'fs/promises'
+import path from 'path'
 
 export interface TranscriptionConfig {
   language_code?: string
@@ -70,11 +72,35 @@ export class AssemblyAI {
   /**
    * Submit audio for transcription
    */
-  async submitTranscription(
-    audioUrl: string,
-    config: TranscriptionConfig = {}
-  ): Promise<string> {
+  async submitTranscription(audioPath: string, config: TranscriptionConfig = {}): Promise<string> {
     try {
+      // Check if the audio path is a URL or local file
+      const isUrl = audioPath.startsWith('http://') || audioPath.startsWith('https://')
+
+      let audioUrl = audioPath
+      if (!isUrl) {
+        // For local files, use AssemblyAI's direct upload endpoint
+        const formData = new FormData()
+        const file = await fs.readFile(audioPath)
+        formData.append('audio_file', new Blob([file]), path.basename(audioPath))
+
+        const uploadResponse = await fetch(`${this.baseUrl}/upload`, {
+          method: 'POST',
+          headers: {
+            Authorization: this.apiKey,
+          },
+          body: formData,
+        })
+
+        if (!uploadResponse.ok) {
+          const error = await uploadResponse.json()
+          throw new Error(`Failed to upload audio file: ${error.message}`)
+        }
+
+        const uploadData = await uploadResponse.json()
+        audioUrl = uploadData.upload_url
+      }
+
       const response = await fetch(`${this.baseUrl}/transcript`, {
         method: 'POST',
         headers: {
@@ -151,7 +177,7 @@ export class AssemblyAI {
         throw new Error(`Transcription failed: ${status.error}`)
       }
 
-      await new Promise((resolve) => setTimeout(resolve, pollingInterval))
+      await new Promise(resolve => setTimeout(resolve, pollingInterval))
       attempts++
     }
 
@@ -179,4 +205,4 @@ export class AssemblyAI {
       throw new Error('Failed to delete transcription')
     }
   }
-} 
+}

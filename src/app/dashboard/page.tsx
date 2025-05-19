@@ -13,10 +13,31 @@ export default function DashboardPage() {
   const [guides, setGuides] = useState<GuideMetadata[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  // TODO: Replace with real user ID from auth context
-  const userId = 'mock-user-id'
+  const [userId, setUserId] = useState<string | null>(null)
 
   useEffect(() => {
+    const getUser = async () => {
+      const {
+        data: { user },
+        error,
+      } = await supabase.auth.getUser()
+      if (error) {
+        setError('Failed to get user session')
+        setLoading(false)
+        return
+      }
+      if (!user) {
+        setError('You must be logged in to view your dashboard.')
+        setLoading(false)
+        return
+      }
+      setUserId(user.id)
+    }
+    getUser()
+  }, [])
+
+  useEffect(() => {
+    if (!userId) return
     const fetchGuides = async () => {
       setLoading(true)
       setError('')

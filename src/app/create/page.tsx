@@ -1,10 +1,140 @@
 'use client'
 
 import { useSearchParams } from 'next/navigation'
-import { Suspense } from 'react'
-import { GuideProvider } from '@/contexts/guide-context'
+import { useState, useEffect, useRef, Suspense } from 'react'
+import { GuideProvider, useGuide } from '@/contexts/guide-context'
 import { useAuth } from '@/contexts/auth-context'
 import { useRouter } from 'next/navigation'
+import { extractYouTubeVideoId } from '@/lib/validation/youtube'
+
+function GuideEditorLoader({ url }: { url: string }) {
+  const { dispatch } = useGuide()
+  const [status, setStatus] = useState<'idle' | 'processing' | 'transcribing' | 'generating' | 'ready' | 'error'>('idle')
+  const [error, setError] = useState<string | null>(null)
+  const { user } = useAuth()
+  const startedRef = useRef(false)
+
+  useEffect(() => {
+    if (startedRef.current) return
+    startedRef.current = true
+    let eventSource: EventSource | null = null
+
+    async function startPipeline() {
+      setStatus('processing')
+      setError(null)
+      try {
+        const videoId = extractYouTubeVideoId(url)
+        if (!videoId) {
+          setError('Invalid YouTube URL')
+          setStatus('error')
+          return
+        }
+
+        const res = await fetch('/api/videos/process', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url, videoId }),
+          credentials: 'include',
+        })
+        const data = await res.json()
+        if (!res.ok) {
+          setError(data.error || 'Failed to start processing')
+          setStatus('error')
+          return
+        }
+
+        // Start SSE connection
+        const processingId = data.id
+        eventSource = new EventSource(`/api/videos/status?id=${processingId}`, {
+          withCredentials: true
+        })
+
+        eventSource.onmessage = async (event) => {
+          const status = JSON.parse(event.data)
+          console.log('Received status update:', status)
+
+          switch (status.type) {
+            case 'status':
+              console.log('Processing status update:', status.status)
+              switch (status.status) {
+                case 'transcribing':
+                  setStatus('transcribing')
+                  break
+                case 'completed':
+                  console.log('Transcription completed, starting guide generation...')
+                  setStatus('generating')
+                  // Generate guide
+                  try {
+                    const guideConfig = {
+                      style: 'detailed',
+                      targetAudience: 'intermediate',
+                      maxLength: 2000,
+                      includeTimestamps: true
+                    }
+
+                    console.log('Sending guide generation request with config:', guideConfig)
+                    const guideRes = await fetch('/api/videos/guide', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ 
+                        id: processingId,
+                        config: guideConfig 
+                      }),
+                      credentials: 'include',
+                    })
+                    const guideData = await guideRes.json()
+                    console.log('Guide generation response:', guideData)
+                    if (!guideRes.ok) {
+                      console.error('Guide generation failed:', guideData)
+                      setError(guideData.error || 'Failed to generate guide')
+                      setStatus('error')
+                      return
+                    }
+                    dispatch({ type: 'LOAD_GUIDE', payload: guideData })
+                    setStatus('ready')
+                  } catch (error) {
+                    console.error('Error generating guide:', error)
+                    setError('Failed to generate guide')
+                    setStatus('error')
+                  }
+                  break
+                case 'error':
+                  setError(status.error || 'Processing failed')
+                  setStatus('error')
+                  break
+              }
+              break
+          }
+        }
+
+        eventSource.onerror = (error) => {
+          console.error('SSE error:', error)
+          setError('Connection lost')
+          setStatus('error')
+          eventSource?.close()
+        }
+      } catch (error) {
+        console.error('Error in pipeline initiation:', error)
+        setError('Failed to start processing pipeline')
+        setStatus('error')
+      }
+    }
+
+    startPipeline()
+    return () => {
+      if (eventSource) {
+        eventSource.close()
+      }
+    }
+  }, [url, dispatch, user])
+
+  if (status === 'processing') return <div>Processing video...</div>
+  if (status === 'transcribing') return <div>Transcribing video...</div>
+  if (status === 'generating') return <div>Generating guide...</div>
+  if (status === 'error') return <div>Error: {error}</div>
+  if (status === 'ready') return <div>Guide ready!</div>
+  return null
+}
 
 function CreateContent() {
   const searchParams = useSearchParams()
@@ -45,7 +175,7 @@ function CreateContent() {
         Source video: <span className="break-all">{url}</span>
       </div>
       <GuideProvider>
-        <div>Guide ready!</div>
+        <GuideEditorLoader url={url} />
       </GuideProvider>
     </div>
   )

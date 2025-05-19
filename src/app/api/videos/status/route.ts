@@ -31,51 +31,90 @@ export function sendStatusUpdate(id: string, data: StatusUpdate) {
 export async function GET(request: Request) {
   return protectApi(async () => {
     try {
+      logger.info('[Status] Starting status request')
       const supabase = createServerActionSupabaseClient()
       const {
         data: { session },
       } = await supabase.auth.getSession()
-
       if (!session?.user) {
         logger.warn('[Status] Unauthorized request - no user session')
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
       }
-
       const { searchParams } = new URL(request.url)
       const id = searchParams.get('id')
+      logger.info('[Status] Request params:', { id })
 
       if (!id) {
         logger.warn('[Status] Missing processing ID in request')
         return NextResponse.json({ error: 'Processing ID is required' }, { status: 400 })
       }
 
-      // Check if user has access to this processing entry
-      const { data: processing, error: processingError } = await supabase
+      const { data: processing, error: procError } = await supabase
         .from('video_processing')
         .select('*')
         .eq('id', id)
         .single()
 
-      if (processingError || !processing) {
-        logger.error('[Status] Failed to fetch processing entry:', processingError)
-        return NextResponse.json({ error: 'Failed to fetch processing entry' }, { status: 500 })
+      if (procError || !processing) {
+        logger.error('[Status] Failed to fetch processing record:', procError)
+        return NextResponse.json({ error: 'Processing record not found' }, { status: 404 })
       }
 
-      if (processing.user_id !== session.user.id) {
-        logger.warn('[Status] Unauthorized access attempt to processing entry:', id)
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
-      }
+      logger.info('[Status] Found processing record:', processing)
 
-      // Create SSE response
       const stream = new ReadableStream({
         start(controller) {
-          connections.set(id, controller)
-          // Send initial status
           const encoder = new TextEncoder()
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(processing)}\n\n`))
-        },
-        cancel() {
-          connections.delete(id)
+          const sendStatus = (status: StatusUpdate) => {
+            logger.info('[Status] Sending status update:', status)
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(status)}\n\n`))
+          }
+
+          // Send initial status
+          sendStatus({
+            id,
+            type: 'status',
+            status: processing.status,
+            progress: processing.progress,
+            step: processing.step,
+            error: processing.error,
+            transcription_job_id: processing.transcription_job_id,
+            transcription: processing.transcription,
+          })
+
+          // Set up real-time updates
+          const channel = supabase
+            .channel(`processing-${id}`)
+            .on(
+              'postgres_changes',
+              {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'video_processing',
+                filter: `id=eq.${id}`,
+              },
+              payload => {
+                logger.info('[Status] Received real-time update:', payload)
+                sendStatus({
+                  id,
+                  type: 'status',
+                  status: payload.new.status,
+                  progress: payload.new.progress,
+                  step: payload.new.step,
+                  error: payload.new.error,
+                  transcription_job_id: payload.new.transcription_job_id,
+                  transcription: payload.new.transcription,
+                })
+              }
+            )
+            .subscribe()
+
+          // Clean up on close
+          request.signal.addEventListener('abort', () => {
+            logger.info('[Status] Client disconnected, cleaning up')
+            channel.unsubscribe()
+            controller.close()
+          })
         },
       })
 
@@ -87,7 +126,7 @@ export async function GET(request: Request) {
         },
       })
     } catch (error) {
-      logger.error('[Status] Error processing request:', error)
+      logger.error('[Status] Error in status endpoint:', error)
       return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
   })

@@ -21,10 +21,11 @@ export async function POST(request: Request) {
       const body = await request.json()
       logger.info('[Video Submission] Request body:', body)
       const videoId = body.videoId
+      const videoUrl = body.url
 
-      if (!videoId) {
-        logger.warn('[Video Submission] Missing video ID in request')
-        return NextResponse.json({ error: 'Video ID is required' }, { status: 400 })
+      if (!videoId || !videoUrl) {
+        logger.warn('[Video Submission] Missing video ID or URL in request')
+        return NextResponse.json({ error: 'Video ID and URL are required' }, { status: 400 })
       }
 
       // Check if video is already in queue
@@ -39,6 +40,129 @@ export async function POST(request: Request) {
         return NextResponse.json({
           message: 'Video already in queue',
           id: existing.id,
+        })
+      }
+
+      // Check for existing transcription by URL first
+      const { data: existingTranscriptionByUrl } = await supabase
+        .from('video_transcriptions')
+        .select('*')
+        .eq('video_url', videoUrl)
+        .single()
+
+      if (existingTranscriptionByUrl) {
+        logger.info(`[Video Submission] Found existing transcription by URL for ${videoUrl}`)
+        // Insert new processing entry as completed (reuse transcription)
+        const { data: processing, error: processingError } = await supabase
+          .from('video_processing')
+          .insert({
+            video_id: videoId,
+            video_url: videoUrl,
+            user_id: session.user.id,
+            status: 'completed',
+            progress: 100,
+            step: 'transcription',
+          })
+          .select()
+          .single()
+
+        if (processingError || !processing) {
+          logger.error(
+            '[Video Submission] Failed to create processing entry (reuse):',
+            processingError
+          )
+          return NextResponse.json({ error: 'Failed to queue video (reuse)' }, { status: 500 })
+        }
+
+        // Insert new video_transcriptions record for this processing
+        const { error: transcriptionInsertError } = await supabase
+          .from('video_transcriptions')
+          .insert({
+            video_id: videoId,
+            processing_id: processing.id,
+            transcription_id: existingTranscriptionByUrl.transcription_id,
+            status: existingTranscriptionByUrl.status,
+            text: existingTranscriptionByUrl.text,
+            words: existingTranscriptionByUrl.words,
+            video_url: videoUrl,
+            user_id: session.user.id,
+          })
+
+        if (transcriptionInsertError) {
+          logger.error(
+            '[Video Submission] Failed to insert reused transcription:',
+            transcriptionInsertError
+          )
+          return NextResponse.json({ error: 'Failed to reuse transcription' }, { status: 500 })
+        }
+
+        logger.info(
+          `[Video Submission] Transcription reused for video ${videoId}, processing ID: ${processing.id}`
+        )
+        return NextResponse.json({
+          message: 'Transcription reused for video',
+          id: processing.id,
+          reusedTranscription: true,
+        })
+      }
+
+      // Check for existing transcription by video_id as fallback
+      const { data: existingTranscriptionById } = await supabase
+        .from('video_transcriptions')
+        .select('*')
+        .eq('video_id', videoId)
+        .single()
+
+      if (existingTranscriptionById) {
+        // Insert new processing entry as completed (reuse transcription)
+        const { data: processing, error: processingError } = await supabase
+          .from('video_processing')
+          .insert({
+            video_id: videoId,
+            video_url: body.url,
+            user_id: session.user.id,
+            status: 'completed',
+            progress: 100,
+            step: 'transcription',
+          })
+          .select()
+          .single()
+
+        if (processingError || !processing) {
+          logger.error(
+            '[Video Submission] Failed to create processing entry (reuse):',
+            processingError
+          )
+          return NextResponse.json({ error: 'Failed to queue video (reuse)' }, { status: 500 })
+        }
+
+        // Insert new video_transcriptions record for this processing
+        const { error: transcriptionInsertError } = await supabase
+          .from('video_transcriptions')
+          .insert({
+            video_id: videoId,
+            processing_id: processing.id,
+            transcription_id: existingTranscriptionById.transcription_id,
+            status: existingTranscriptionById.status,
+            text: existingTranscriptionById.text,
+            user_id: session.user.id,
+          })
+
+        if (transcriptionInsertError) {
+          logger.error(
+            '[Video Submission] Failed to insert reused transcription:',
+            transcriptionInsertError
+          )
+          return NextResponse.json({ error: 'Failed to reuse transcription' }, { status: 500 })
+        }
+
+        logger.info(
+          `[Video Submission] Transcription reused for video ${videoId}, processing ID: ${processing.id}`
+        )
+        return NextResponse.json({
+          message: 'Transcription reused for video',
+          id: processing.id,
+          reusedTranscription: true,
         })
       }
 

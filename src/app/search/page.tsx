@@ -26,7 +26,7 @@ function SearchContent() {
       ;(async () => {
         try {
           const { data, error } = await supabase
-            .from('video_guides')
+            .from('guides')
             .select('*')
             .eq('status', 'completed')
             .ilike('title', `%${query}%`)
@@ -67,7 +67,7 @@ function SearchContent() {
     setShowSuggestions(true)
     // Live suggestions from guide titles
     supabase
-      .from('video_guides')
+      .from('guides')
       .select('title')
       .eq('status', 'completed')
       .ilike('title', `%${e.target.value}%`)

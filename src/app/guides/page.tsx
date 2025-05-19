@@ -36,11 +36,15 @@ export default function GuideLibraryPage() {
       setError('')
       try {
         const { data, error: fetchError } = await supabase
-          .from('video_guides')
+          .from('guides')
           .select('*')
           .eq('status', 'completed')
         if (fetchError) throw fetchError
-        let filtered = data as GuideMetadata[]
+        let filtered = (data as unknown[]).map(g => ({
+          ...g,
+          createdAt: g.created_at,
+          updatedAt: g.updated_at,
+        })) as GuideMetadata[]
         if (search) {
           filtered = filtered.filter(
             g =>

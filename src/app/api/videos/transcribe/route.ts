@@ -67,6 +67,7 @@ export async function POST(request: Request) {
         transcription_id: transcriptionId,
         status: 'processing',
         user_id: session.user.id,
+        video_url: processing.video_url,
       })
 
       if (dbError) {

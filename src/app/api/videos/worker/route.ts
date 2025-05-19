@@ -114,6 +114,25 @@ export async function POST(request: Request) {
       throw err
     }
 
+    // After audio extraction, before submitting to AssemblyAI
+    logger.info(
+      `[WORKER] Attempting to update video_processing status to 'transcribing' for id: ${id}`
+    )
+    const { data: transcribingData, error: transcribingError } = await supabase
+      .from('video_processing')
+      .update({ status: 'transcribing', progress: 50, step: 'transcription' })
+      .eq('id', id)
+      .select()
+    if (transcribingError) {
+      logger.error(
+        `[WORKER] Failed to update video_processing status to 'transcribing': ${transcribingError.message}`
+      )
+    } else if (!transcribingData || transcribingData.length === 0) {
+      logger.warn(`[WORKER] No rows updated in video_processing for id: ${id} (transcribing)`)
+    } else {
+      logger.info(`[WORKER] video_processing status updated to 'transcribing' for id: ${id}`)
+    }
+
     sendStatusUpdate(id!, {
       type: 'status',
       status: 'transcribing',
@@ -152,6 +171,7 @@ export async function POST(request: Request) {
       transcription_id: transcriptionJob,
       status: 'processing',
       user_id: userId,
+      video_url: videoUrl,
     })
 
     if (transcriptionError) {
@@ -222,6 +242,41 @@ export async function POST(request: Request) {
             }
           }
 
+          // Update video_processing status
+          try {
+            const { error: processingUpdateError } = await supabase
+              .from('video_processing')
+              .update({
+                status: 'completed',
+                progress: 100,
+                step: 'pipeline_complete',
+              })
+              .eq('id', id)
+
+            if (processingUpdateError) {
+              logger.error(
+                `[WORKER] Failed to update video_processing status: ${processingUpdateError.message}`
+              )
+              // Try updating without the step field as fallback
+              const { error: fallbackError } = await supabase
+                .from('video_processing')
+                .update({
+                  status: 'completed',
+                  progress: 100,
+                })
+                .eq('id', id)
+
+              if (fallbackError) {
+                throw new Error(
+                  `Failed to update video_processing status: ${fallbackError.message}`
+                )
+              }
+            }
+          } catch (error) {
+            logger.error(`[WORKER] Error updating video_processing status:`, error)
+            throw error
+          }
+
           sendStatusUpdate(id!, {
             type: 'status',
             status: 'completed',
@@ -233,6 +288,7 @@ export async function POST(request: Request) {
             },
           })
 
+          // After transcription is complete and saved to DB
           logger.info(`[WORKER] Processing complete for video ${videoId}`)
           return NextResponse.json({
             message: 'Video processing complete',

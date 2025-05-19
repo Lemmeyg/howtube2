@@ -79,7 +79,7 @@ describe('GuideStorage', () => {
       mockQueryBuilder.single.mockResolvedValueOnce({ data: { id: mockGuideId }, error: null })
       const result = await storage.createGuide(mockVideoId, mockUserId)
 
-      expect(mockSupabase.from).toHaveBeenCalledWith('video_guides')
+      expect(mockSupabase.from).toHaveBeenCalledWith('guides')
       expect(mockQueryBuilder.insert).toHaveBeenCalledWith({
         video_id: mockVideoId,
         user_id: mockUserId,
@@ -125,7 +125,7 @@ describe('GuideStorage', () => {
       mockQueryBuilder.single.mockResolvedValueOnce({ data: mockGuideMetadataSnake, error: null })
       const result = await storage.getGuideMetadata(mockGuideId)
 
-      expect(mockSupabase.from).toHaveBeenCalledWith('video_guides')
+      expect(mockSupabase.from).toHaveBeenCalledWith('guides')
       expect(mockQueryBuilder.select).toHaveBeenCalled()
       expect(mockQueryBuilder.eq).toHaveBeenCalledWith('id', mockGuideId)
       expect(mockQueryBuilder.single).toHaveBeenCalled()
@@ -154,7 +154,7 @@ describe('GuideStorage', () => {
       })
       const result = await storage.getGuideContent(mockGuideId)
 
-      expect(mockSupabase.from).toHaveBeenCalledWith('video_guide_sections')
+      expect(mockSupabase.from).toHaveBeenCalledWith('guide_sections')
       expect(mockQueryBuilder.select).toHaveBeenCalled()
       expect(mockQueryBuilder.eq).toHaveBeenCalledWith('guide_id', mockGuideId)
       expect(mockQueryBuilder.order).toHaveBeenCalledWith('section_order', { ascending: true })
@@ -184,7 +184,7 @@ describe('GuideStorage', () => {
       mockQueryBuilder.eq = jest.fn().mockImplementation(() => Promise.resolve({ error: null }))
       await storage.deleteGuide(mockGuideId)
 
-      expect(mockSupabase.from).toHaveBeenCalledWith('video_guides')
+      expect(mockSupabase.from).toHaveBeenCalledWith('guides')
       expect(mockQueryBuilder.delete).toHaveBeenCalled()
       expect(mockQueryBuilder.eq).toHaveBeenCalledWith('id', mockGuideId)
     })
@@ -205,7 +205,7 @@ describe('GuideStorage', () => {
       )
       const result = await storage.listGuides(mockUserId)
 
-      expect(mockSupabase.from).toHaveBeenCalledWith('video_guides')
+      expect(mockSupabase.from).toHaveBeenCalledWith('guides')
       expect(mockQueryBuilder.select).toHaveBeenCalled()
       expect(mockQueryBuilder.eq).toHaveBeenCalledWith('user_id', mockUserId)
       expect(mockQueryBuilder.order).toHaveBeenCalledWith('created_at', { ascending: false })

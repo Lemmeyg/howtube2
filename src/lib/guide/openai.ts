@@ -43,7 +43,9 @@ export class GuideGenerator {
 
     if (typeof transcriptionOrConfig === 'string') {
       if (!wordsArg || !configArg) {
-        throw new Error('transcription, words, and config are required when using the three-argument form')
+        throw new Error(
+          'transcription, words, and config are required when using the three-argument form'
+        )
       }
       transcription = transcriptionOrConfig
       words = wordsArg
@@ -66,7 +68,7 @@ Your task is to create a well-structured ${style} guide for ${targetAudience}-le
 The guide should be informative, engaging, and easy to follow.
 Keep the total content within ${maxLength} characters.
 ${config.includeTimestamps ? 'Include relevant timestamps for each section.' : ''}
-Focus on extracting key concepts, steps, and insights from the transcript.`
+Focus on extracting key concepts, steps, and insights from the transcript. Always respond with a JSON object`
 
       // Generate initial guide structure
       const structureResponse = await this.openai.chat.completions.create({
@@ -83,7 +85,7 @@ ${transcription}`,
           },
         ],
         response_format: { type: 'json_object' },
-        temperature: 0.7,
+        temperature: 0.5,
       })
 
       const structure = JSON.parse(structureResponse.choices[0].message.content || '{}')
@@ -153,10 +155,11 @@ Focus on creating detailed content for this section: "${section.title}"`,
         temperature: 0.5,
       })
 
-      const keywords = keywordsResponse.choices[0].message.content
-        ?.split(/[,\n]/)
-        .map(k => k.trim())
-        .filter(k => k.length > 0) || []
+      const keywords =
+        keywordsResponse.choices[0].message.content
+          ?.split(/[,\n]/)
+          .map(k => k.trim())
+          .filter(k => k.length > 0) || []
 
       return {
         title: structure.title,
@@ -170,4 +173,4 @@ Focus on creating detailed content for this section: "${section.title}"`,
       throw new Error('Failed to generate guide')
     }
   }
-} 
+}
